@@ -9,6 +9,23 @@ import {
   Zap, Home, ClipboardList, Bell, FolderOpen, Shield, RotateCcw,
   ArrowLeftRight, BookOpen, Activity, Calendar, ChevronRight
 } from 'lucide-react'
+import dynamic from 'next/dynamic'
+
+// Dynamically import charts (client-only, no SSR)
+const SalesCharts        = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.SalesCharts), { ssr: false })
+const PurchaseCharts     = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.PurchaseCharts), { ssr: false })
+const InventoryCharts    = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.InventoryCharts), { ssr: false })
+const StockAgingCharts   = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.StockAgingCharts), { ssr: false })
+const ProfitCharts       = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.ProfitCharts), { ssr: false })
+const ExpenseCharts      = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.ExpenseCharts), { ssr: false })
+const CashBookCharts     = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.CashBookCharts), { ssr: false })
+const DailySummaryCharts = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.DailySummaryCharts), { ssr: false })
+const SalaryCharts       = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.SalaryCharts), { ssr: false })
+const AttendanceCharts   = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.AttendanceCharts), { ssr: false })
+const OutstandingCharts  = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.OutstandingCharts), { ssr: false })
+const ReminderCharts     = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.ReminderCharts), { ssr: false })
+const LowStockCharts     = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.LowStockCharts), { ssr: false })
+
 
 // ── Report categories ─────────────────────────────────────────────────────────
 const REPORT_GROUPS = [
@@ -543,6 +560,26 @@ export default function ReportsPage() {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* ── Charts — contextual per report ── */}
+          {data.length > 0 && (
+            <>
+              {activeReport === 'sales'            && <SalesCharts data={data}/>}
+              {activeReport === 'purchases'         && <PurchaseCharts data={data}/>}
+              {activeReport === 'inventory'         && <InventoryCharts data={data}/>}
+              {activeReport === 'stock_aging'       && <StockAgingCharts data={data}/>}
+              {activeReport === 'profit_margin'     && <ProfitCharts data={data}/>}
+              {activeReport === 'expenses'          && <ExpenseCharts data={data}/>}
+              {activeReport === 'cash_book'         && <CashBookCharts data={data}/>}
+              {activeReport === 'daily_summary'     && <DailySummaryCharts data={data}/>}
+              {activeReport === 'salary'            && <SalaryCharts data={data}/>}
+              {activeReport === 'attendance'        && <AttendanceCharts data={data}/>}
+              {activeReport === 'vendor_ledger'     && <OutstandingCharts data={data} label="Vendors"/>}
+              {activeReport === 'customer_ledger'   && <OutstandingCharts data={data} label="Customers"/>}
+              {activeReport === 'reminders'         && <ReminderCharts data={data}/>}
+              {activeReport === 'low_stock'         && <LowStockCharts data={data}/>}
+            </>
           )}
 
           {/* Data table */}
