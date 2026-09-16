@@ -1,0 +1,215 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helpers ────────────────────────────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isOwnerOrAdmin() {
+      return getUserRole() in ['owner', 'admin'];
+    }
+
+    function isManagerOrAbove() {
+      return getUserRole() in ['owner', 'admin', 'manager'];
+    }
+
+    function isAccountantOrAbove() {
+      return getUserRole() in ['owner', 'admin', 'accountant'];
+    }
+
+    // ─── Users ──────────────────────────────────────────
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwnerOrAdmin();
+      allow update: if isOwnerOrAdmin() || request.auth.uid == userId;
+      allow delete: if false; // Never delete users
+    }
+
+    // ─── Settings ───────────────────────────────────────
+    match /settings/{key} {
+      allow read: if isAuthenticated();
+      allow write: if isOwnerOrAdmin();
+    }
+
+    // ─── Products ───────────────────────────────────────
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+
+      match /variants/{variantId} {
+        allow read: if isAuthenticated();
+        allow write: if isManagerOrAbove();
+      }
+    }
+
+    // ─── Categories & Brands ────────────────────────────
+    match /categories/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    match /brands/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── Customers ──────────────────────────────────────
+    match /customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isOwnerOrAdmin();
+    }
+
+    // ─── Vendors ────────────────────────────────────────
+    match /vendors/{vendorId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isManagerOrAbove();
+      allow delete: if isOwnerOrAdmin();
+    }
+
+    // ─── Sales ──────────────────────────────────────────
+    match /sales/{saleId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated(); // All staff can bill
+      allow update: if isManagerOrAbove(); // Only managers can edit/cancel
+      allow delete: if false; // Never delete sales — use cancellation
+
+      match /items/{itemId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+      }
+    }
+
+    // ─── Sale Returns ───────────────────────────────────
+    match /saleReturns/{id} {
+      allow read: if isAuthenticated();
+      allow create, update: if isManagerOrAbove();
+      allow delete: if false;
+    }
+
+    // ─── Purchases ──────────────────────────────────────
+    match /purchases/{purchaseId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isManagerOrAbove();
+      allow delete: if isOwnerOrAdmin();
+
+      match /items/{itemId} {
+        allow read: if isAuthenticated();
+        allow write: if isManagerOrAbove();
+      }
+    }
+
+    // ─── Expenses ───────────────────────────────────────
+    match /expenses/{expenseId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAccountantOrAbove();
+    }
+
+    match /expenseCategories/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isOwnerOrAdmin();
+    }
+
+    // ─── Electricity Bills ──────────────────────────────
+    match /electricityBills/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAccountantOrAbove();
+    }
+
+    // ─── Rent ───────────────────────────────────────────
+    match /rentPayments/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAccountantOrAbove();
+    }
+
+    // ─── Employees ──────────────────────────────────────
+    match /employees/{employeeId} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── Attendance ─────────────────────────────────────
+    match /attendance/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isManagerOrAbove();
+    }
+
+    // ─── Salaries ───────────────────────────────────────
+    match /salaries/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAccountantOrAbove();
+    }
+
+    // ─── Cash & Bank ────────────────────────────────────
+    match /cashTransactions/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAccountantOrAbove();
+      allow update, delete: if isOwnerOrAdmin();
+    }
+
+    match /bankAccounts/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAccountantOrAbove();
+    }
+
+    match /bankTransactions/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAccountantOrAbove();
+      allow update, delete: if isOwnerOrAdmin();
+    }
+
+    // ─── Reminders ──────────────────────────────────────
+    match /reminders/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ─── Notifications ──────────────────────────────────
+    match /notifications/{id} {
+      allow read: if isAuthenticated() && (isOwnerOrAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if false; // Only Cloud Functions write notifications
+      allow update: if isAuthenticated() && (isOwnerOrAdmin() || resource.data.userId == request.auth.uid);
+      allow delete: if false;
+    }
+
+    // ─── Documents ──────────────────────────────────────
+    match /documents/{id} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isOwnerOrAdmin();
+    }
+
+    // ─── Daily Summaries ────────────────────────────────
+    match /dailySummaries/{date} {
+      allow read: if isAuthenticated();
+      allow write: if isOwnerOrAdmin(); // Primarily written by Cloud Functions
+    }
+
+    // ─── Stock Transactions ─────────────────────────────
+    match /stockTransactions/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated(); // System writes on sale/purchase
+      allow update, delete: if false; // Immutable transaction log
+    }
+
+    // ─── Audit Logs ─────────────────────────────────────
+    match /auditLogs/{id} {
+      allow read: if isOwnerOrAdmin();
+      allow create: if isAuthenticated(); // Anyone can write audit logs
+      allow update, delete: if false; // Immutable — never edited or deleted
+    }
+
+    // ─── Recurring Expenses ─────────────────────────────
+    match /recurringExpenses/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAccountantOrAbove();
+    }
+  }
+}
