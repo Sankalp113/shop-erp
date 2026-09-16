@@ -7,9 +7,51 @@ import {
   BarChart3, TrendingUp, ShoppingBag, DollarSign, Users, Package,
   Download, FileSpreadsheet, Truck, Store, UserCheck, Wallet,
   Zap, Home, ClipboardList, Bell, FolderOpen, Shield, RotateCcw,
-  ArrowLeftRight, BookOpen, Activity, Calendar, ChevronRight
+  ArrowLeftRight, BookOpen, Activity, Calendar, ChevronRight, FileDown
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
+
+// ── Download helpers ──────────────────────────────────────────────────────────
+function escapeCSV(v: string | number | boolean | null | undefined): string {
+  const s = String(v ?? '')
+  return s.includes(',') || s.includes('"') || s.includes('\n')
+    ? `"${s.replace(/"/g, '""')}"`
+    : s
+}
+
+function downloadCSV(filename: string, headers: string[], rows: (string | number)[][][]) {
+  const bom = '\uFEFF' // UTF-8 BOM so Excel reads ₹ correctly
+  const lines = [
+    headers.map(escapeCSV).join(','),
+    ...rows.map(row => row.map(cell => escapeCSV(cell[0])).join(',')),
+  ]
+  const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
+}
+
+function exportReport(
+  reportId: string,
+  reportLabel: string,
+  cols: { label: string; key: string; currency?: boolean; date?: boolean }[],
+  data: any[],
+  month: string
+) {
+  const headers = ['#', ...cols.map(c => c.label)]
+  const rows = data.map((row, idx) => [
+    [[idx + 1]],
+    ...cols.map(c => {
+      const val = getCellValue(row, c.key)
+      if (c.currency && typeof val === 'number') return [[val]]
+      if (c.date && typeof val === 'string') return [[formatDate(val)]]
+      return [[val]]
+    }),
+  ])
+  const fname = `JKB_${reportLabel.replace(/[^a-zA-Z0-9]/g, '_')}_${month}.csv`
+  downloadCSV(fname, headers, rows as any)
+}
 
 // Dynamically import charts (client-only, no SSR)
 const SalesCharts        = dynamic(() => import('@/components/reports/ReportCharts').then(m => m.SalesCharts), { ssr: false })
@@ -487,8 +529,11 @@ export default function ReportsPage() {
   const cols = REPORT_COLS[activeReport] || []
   const activeGroup = REPORT_GROUPS.find(g => g.reports.some(r => r.id === activeReport))
   const activeReportMeta = REPORT_GROUPS.flatMap(g => g.reports).find(r => r.id === activeReport)
-
   const summaryColors = ['#7C3AED', '#0891B2', '#059669', '#D97706', '#DC2626', '#6B7280']
+
+  function handleDownload() {
+    exportReport(activeReport, activeReportMeta?.label || activeReport, cols, data, month)
+  }
 
   return (
     <div>
@@ -496,15 +541,15 @@ export default function ReportsPage() {
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
           <h1 className="page-title">Reports</h1>
-          <p className="page-subtitle">Business intelligence — 25 report formats</p>
+          <p className="page-subtitle">Business intelligence — 25 downloadable report formats</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <input type="month" className="form-input w-auto" value={month}
             onChange={e => setMonth(e.target.value)} />
-          <a href="/cloth_shop_management_reports.xlsx" download
-            className="btn btn-primary flex items-center gap-2">
+          <a href="/shop-erp/cloth_shop_management_reports.xlsx" download
+            className="btn btn-secondary flex items-center gap-2">
             <FileSpreadsheet size={15} />
-            Download Excel Templates
+            Excel Templates
           </a>
         </div>
       </div>
@@ -539,11 +584,23 @@ export default function ReportsPage() {
 
         {/* Main content */}
         <div className="flex-1 min-w-0">
-          {/* Report title bar */}
-          <div className="flex items-center gap-2 mb-3 text-sm text-gray-500">
-            <span>{activeGroup?.label}</span>
-            <ChevronRight size={14} />
-            <span className="text-white font-semibold">{activeReportMeta?.label}</span>
+          {/* Report title bar + download button */}
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <span>{activeGroup?.label}</span>
+              <ChevronRight size={14} />
+              <span className="text-white font-semibold">{activeReportMeta?.label}</span>
+              {data.length > 0 && (
+                <span className="text-xs text-gray-600 ml-1">({data.length} records)</span>
+              )}
+            </div>
+            {data.length > 0 && (
+              <button onClick={handleDownload}
+                className="btn btn-primary flex items-center gap-2 text-sm py-1.5 px-3">
+                <FileDown size={14} />
+                Download CSV
+              </button>
+            )}
           </div>
 
           {/* Summary KPI cards */}
@@ -584,6 +641,28 @@ export default function ReportsPage() {
 
           {/* Data table */}
           <div className="glass-card overflow-hidden">
+            {/* Table toolbar */}
+            {data.length > 0 && (
+              <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
+                <span className="text-xs text-gray-500">
+                  Showing <span className="text-white font-semibold">{data.length}</span> records
+                  {month && <span className="ml-1">for {month}</span>}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button onClick={handleDownload}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 transition-all">
+                    <FileDown size={12} />
+                    Download CSV
+                  </button>
+                  <a href="/shop-erp/cloth_shop_management_reports.xlsx" download
+                    className="flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 border border-violet-500/20 transition-all">
+                    <FileSpreadsheet size={12} />
+                    Excel Template
+                  </a>
+                </div>
+              </div>
+            )}
+
             {loading ? (
               <div className="loading-overlay py-24"><div className="spinner spinner-lg" /></div>
             ) : data.length === 0 ? (
@@ -629,10 +708,17 @@ export default function ReportsPage() {
             )}
           </div>
 
-          {/* Excel download note */}
-          <div className="mt-3 flex items-center gap-2 text-xs text-gray-600">
-            <Download size={12} />
-            <span>Download the Excel template above to get all 25 report formats with formulas, filters, and 200-row capacity for offline use.</span>
+          {/* Footer note */}
+          <div className="mt-3 flex items-center justify-between text-xs text-gray-700">
+            <div className="flex items-center gap-1.5">
+              <Download size={11} />
+              <span>CSV opens in Excel, Google Sheets, and LibreOffice with ₹ values intact.</span>
+            </div>
+            {data.length > 0 && (
+              <button onClick={handleDownload} className="text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
+                <FileDown size={11} /> Export {data.length} rows
+              </button>
+            )}
           </div>
         </div>
       </div>
