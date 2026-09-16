@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { AuthProvider } from '@/lib/context/AuthContext'
-import { Toaster } from 'react-hot-toast'
+import { ToastProvider } from '@/lib/context/ToastContext'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -27,22 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={inter.variable}>
       <body className="bg-gray-950 text-gray-100 antialiased">
         <AuthProvider>
-          {children}
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              duration: 3000,
-              style: {
-                background: '#1e1b4b',
-                color: '#f1f5f9',
-                border: '1px solid rgba(124,58,237,0.3)',
-                borderRadius: '10px',
-                fontSize: '13px',
-              },
-              success: { iconTheme: { primary: '#10B981', secondary: '#fff' } },
-              error: { iconTheme: { primary: '#EF4444', secondary: '#fff' } },
-            }}
-          />
+          <ToastProvider>
+            {children}
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>

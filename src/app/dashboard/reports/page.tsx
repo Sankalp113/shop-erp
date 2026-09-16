@@ -1,6 +1,6 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
-import { collection, query, orderBy, where, getDocs, limit } from 'firebase/firestore'
+import { useState, useEffect } from 'react'
+import { collection, query, orderBy, where, onSnapshot, limit } from 'firebase/firestore'
 import { db } from '@/lib/firebase/config'
 import { formatCurrency, formatDate, currentMonth } from '@/lib/utils'
 import {
@@ -452,34 +452,35 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState<Record<string, number>>({})
 
-  const load = useCallback(async () => {
+  // ── Live onSnapshot listener ────────────────────────────────────────────
+  useEffect(() => {
     setLoading(true)
     setData([])
     setSummary({})
-    try {
-      const col = COLLECTION_MAP[activeReport]
-      if (!col) { setLoading(false); return }
 
-      let q
-      const dateField: Record<string, string> = {
-        sales: 'saleDate', expenses: 'expenseDate', purchases: 'purchaseDate',
-        salary: 'salaryMonth', attendance: 'date', electricity: 'billDate',
-        rent: 'month', daily_summary: 'summaryDate', cash_book: 'date',
-        bank_upi: 'date', audit_log: 'timestamp',
-      }
-      const df = dateField[activeReport]
+    const col = COLLECTION_MAP[activeReport]
+    if (!col) { setLoading(false); return }
 
-      if (df && (activeReport === 'sales' || activeReport === 'expenses' || activeReport === 'purchases')) {
-        q = query(collection(db, col),
-          where(df, '>=', `${month}-01`),
-          where(df, '<=', `${month}-31`),
-          orderBy(df, 'desc'), limit(500))
-      } else {
-        q = query(collection(db, col), limit(500))
-      }
+    const dateField: Record<string, string> = {
+      sales: 'saleDate', expenses: 'expenseDate', purchases: 'purchaseDate',
+      salary: 'salaryMonth', attendance: 'date', electricity: 'billDate',
+      rent: 'month', daily_summary: 'summaryDate', cash_book: 'date',
+      bank_upi: 'date', audit_log: 'timestamp',
+    }
+    const df = dateField[activeReport]
 
-      const snap = await getDocs(q)
-      let rows: any[] = snap.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, any>) }))
+    let q
+    if (df && (activeReport === 'sales' || activeReport === 'expenses' || activeReport === 'purchases')) {
+      q = query(collection(db, col),
+        where(df, '>=', `${month}-01`),
+        where(df, '<=', `${month}-31`),
+        orderBy(df, 'desc'), limit(500))
+    } else {
+      q = query(collection(db, col), limit(500))
+    }
+
+    const unsub = onSnapshot(q, snap => {
+      const rows: any[] = snap.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, any>) }))
 
       // Computed summary
       if (activeReport === 'sales') {
@@ -506,25 +507,20 @@ export default function ReportsPage() {
           'Low Stock': rows.filter(r => (r.quantity || 0) <= (r.reorderLevel || 5)).length,
         })
       } else if (activeReport === 'vendor_ledger') {
-        setSummary({
-          'Total Vendors': rows.length,
-          Outstanding: rows.reduce((s, r) => s + (r.outstanding || 0), 0),
-        })
+        setSummary({ 'Total Vendors': rows.length, Outstanding: rows.reduce((s, r) => s + (r.outstanding || 0), 0) })
       } else if (activeReport === 'customer_ledger') {
-        setSummary({
-          'Total Customers': rows.length,
-          Outstanding: rows.reduce((s, r) => s + (r.outstanding || 0), 0),
-        })
+        setSummary({ 'Total Customers': rows.length, Outstanding: rows.reduce((s, r) => s + (r.outstanding || 0), 0) })
       }
 
       setData(rows)
-    } catch (e) {
-      console.error(e)
-    }
-    setLoading(false)
-  }, [activeReport, month])
+      setLoading(false)
+    }, err => {
+      console.error('[Reports onSnapshot]', err)
+      setLoading(false)
+    })
 
-  useEffect(() => { load() }, [load])
+    return () => unsub()
+  }, [activeReport, month])
 
   const cols = REPORT_COLS[activeReport] || []
   const activeGroup = REPORT_GROUPS.find(g => g.reports.some(r => r.id === activeReport))
@@ -590,9 +586,15 @@ export default function ReportsPage() {
               <span>{activeGroup?.label}</span>
               <ChevronRight size={14} />
               <span className="text-white font-semibold">{activeReportMeta?.label}</span>
-              {data.length > 0 && (
-                <span className="text-xs text-gray-600 ml-1">({data.length} records)</span>
-              )}
+            {data.length > 0 && (
+              <span className="text-xs text-gray-600 ml-1">({data.length} records</span>
+            )}
+            {data.length > 0 && (
+              <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>
+                Live
+              </span>
+            )}
             </div>
             {data.length > 0 && (
               <button onClick={handleDownload}
