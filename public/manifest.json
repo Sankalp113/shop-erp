@@ -1,7 +1,7 @@
 {
-  "name": "Cloth Shop ERP",
-  "short_name": "Shop ERP",
-  "description": "Complete Cloth Shop Business Management System",
+  "name": "Janta Kapad Bhandar ERP",
+  "short_name": "JKB ERP",
+  "description": "Janta Kapad Bhandar — Complete Business Management System",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#050510",

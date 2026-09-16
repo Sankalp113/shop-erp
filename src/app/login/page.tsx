@@ -57,7 +57,8 @@ export default function LoginPage() {
             style={{ background: 'linear-gradient(135deg, #7C3AED, #06B6D4)', boxShadow: '0 0 40px rgba(124,58,237,0.4)' }}>
             <span className="text-3xl">👔</span>
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Cloth Shop ERP</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Janta Kapad Bhandar</h1>
+          <p className="text-violet-400 text-xs font-semibold tracking-widest uppercase mt-0.5">ERP System</p>
           <p className="text-gray-500 text-sm mt-1">Sign in to your account</p>
         </div>
 
@@ -103,7 +104,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-gray-700 mt-6">
-          Cloth Shop ERP v1.0 · Secured by Firebase Authentication
+          Janta Kapad Bhandar ERP v1.0 · Secured by Firebase Authentication
         </p>
       </div>
     </div>

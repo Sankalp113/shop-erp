@@ -120,8 +120,8 @@ export default function Sidebar({ collapsed, setCollapsed }: { collapsed: boolea
         </div>
         {!collapsed && (
           <div className="overflow-hidden">
-            <div className="text-sm font-bold text-white whitespace-nowrap">Cloth Shop ERP</div>
-            <div className="text-xs text-gray-600 whitespace-nowrap">Business Management</div>
+            <div className="text-sm font-bold text-white whitespace-nowrap">Janta Kapad Bhandar</div>
+            <div className="text-xs text-gray-600 whitespace-nowrap">ERP System</div>
           </div>
         )}
       </div>

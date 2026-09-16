@@ -8,10 +8,10 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
 export const metadata: Metadata = {
   title: {
-    default: 'Cloth Shop ERP',
-    template: '%s | Cloth Shop ERP',
+    default: 'Janta Kapad Bhandar ERP',
+    template: '%s | Janta Kapad Bhandar ERP',
   },
-  description: 'Complete Cloth Shop Management System — Billing, Inventory, Accounts & more',
+  description: 'Janta Kapad Bhandar — Complete Business Management System for Billing, Inventory, Accounts & more',
   manifest: '/manifest.json',
   icons: { icon: '/favicon.ico' },
 }
