@@ -60,3 +60,4 @@ CLAUDE.md
 *.pem
 .vercel
 setup-firebase.js
+generate-reports.js
