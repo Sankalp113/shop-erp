@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import api from '../../services/api'
+import { getAuditLogs } from '../../services/db'
 
 export default function AuditLog() {
   const [logs, setLogs] = useState([])
@@ -14,8 +14,8 @@ export default function AuditLog() {
 
   async function load() {
     setLoading(true)
-    const r = await api.get('/audit', { params: { module, from, to, page, limit: 100 } })
-    setLogs(r.data.data); setTotal(r.data.total); setLoading(false)
+    const r = await getAuditLogs({ module, from, to, limit: 100 })
+    setLogs(r.data); setTotal(r.total); setLoading(false)
   }
 
   const ACTION_COLORS = { CREATE_SALE:'var(--success)', CREATE_PURCHASE:'var(--accent)', UPDATE_PRODUCT:'var(--warning)', DELETE:'var(--danger)', CREATE_EXPENSE:'var(--warning)', LOGIN:'var(--info)' }

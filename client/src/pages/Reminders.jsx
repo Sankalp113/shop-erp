@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../services/api'
+import { getReminders, createReminder, updateReminderStatus, deleteReminder } from '../services/db'
 
 export default function Reminders() {
   const [reminders, setReminders] = useState([])
@@ -14,22 +14,35 @@ export default function Reminders() {
 
   async function load() {
     setLoading(true)
-    const r = await api.get('/reminders', { params: { status: filter } })
-    setReminders(r.data.data); setCounts(r.data.counts); setLoading(false)
+    const reminders = await getReminders({ status: filter })
+    // compute counts
+    const todayStr = new Date().toISOString().split('T')[0]
+    const in7Days = new Date(Date.now() + 7*86400000).toISOString().split('T')[0]
+    const all = await getReminders({})
+    setCounts({
+      overdue: all.filter(r => r.due_date < todayStr && r.status === 'pending').length,
+      due_today: all.filter(r => r.due_date === todayStr && r.status === 'pending').length,
+      due_week: all.filter(r => r.due_date >= todayStr && r.due_date <= in7Days && r.status === 'pending').length,
+      total_pending: all.filter(r => r.status === 'pending').length,
+    })
+    const enriched = reminders.map(r => {
+      const urgency = r.due_date < todayStr ? 'overdue' : r.due_date === todayStr ? 'due_today' : r.due_date <= in7Days ? 'due_soon' : 'upcoming'
+      return { ...r, urgency }
+    })
+    setReminders(enriched); setLoading(false)
   }
 
   async function complete(id) {
-    await api.put(`/reminders/${id}/complete`); toast.success('Marked complete'); load()
-    await api.put('/reminders/notifications/read-all').catch(()=>{})
+    await updateReminderStatus(id, 'completed'); toast.success('Marked complete'); load()
   }
 
-  async function dismiss(id) { await api.put(`/reminders/${id}/dismiss`); toast('Dismissed'); load() }
+  async function dismiss(id) { await updateReminderStatus(id, 'dismissed'); toast('Dismissed'); load() }
 
   async function submit(e) {
     e.preventDefault()
     if (!form.title || !form.due_date) return toast.error('Title and due date required')
-    try { await api.post('/reminders', form); toast.success('Reminder added'); setShowForm(false); load() }
-    catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    try { await createReminder(form); toast.success('Reminder added'); setShowForm(false); load() }
+    catch (err) { toast.error(err.message || 'Failed') }
   }
 
   const URGENCY_STYLE = {

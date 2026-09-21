@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import api from '../../services/api'
+import { getStockAging } from '../../services/db'
 
 const AGING_CATS = [
   { key: '0_30', label: '0–30 Days', color: 'var(--success)', desc: 'Fast moving' },
@@ -16,7 +16,7 @@ export default function StockAging() {
   const [selCat, setSelCat] = useState('all')
 
   useEffect(() => {
-    api.get('/inventory/aging').then(r => { setData(r.data.categorized || {}); setAll(r.data.data || []) }).finally(() => setLoading(false))
+    getStockAging().then(r => { setData(r.categorized || {}); setAll(r.data || []) }).finally(() => setLoading(false))
   }, [])
 
   const displayData = selCat === 'all' ? all : (data[selCat] || [])

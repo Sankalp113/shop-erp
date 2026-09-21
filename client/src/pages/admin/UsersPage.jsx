@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getUsers, createUser, updateUser } from '../../services/db'
 
 export default function UsersPage() {
   const [users, setUsers] = useState([])
@@ -10,22 +10,22 @@ export default function UsersPage() {
   const [editUser, setEditUser] = useState(null)
   const [form, setForm] = useState({ username:'', password:'', full_name:'', email:'', mobile:'', role_name:'staff', is_active:1 })
 
-  useEffect(() => { load(); api.get('/users/roles').then(r=>setRoles(r.data)) }, [])
-  async function load() { const r = await api.get('/users'); setUsers(r.data); setLoading(false) }
+  useEffect(() => { load() }, [])
+  async function load() { const users = await getUsers(); setUsers(users); setLoading(false) }
 
-  function openAdd() { setEditUser(null); setForm({ username:'', password:'', full_name:'', email:'', mobile:'', role_name:'staff', is_active:1 }); setShowForm(true) }
-  function openEdit(u) { setEditUser(u); setForm({ ...u, password:'', role_name: u.role_name }); setShowForm(true) }
+  function openAdd() { setEditUser(null); setForm({ username:'', password:'', full_name:'', email:'', mobile:'', role:'billing', is_active:true }); setShowForm(true) }
+  function openEdit(u) { setEditUser(u); setForm({ ...u, password:'' }); setShowForm(true) }
 
   async function submit(e) {
     e.preventDefault()
     try {
-      if (editUser) { await api.put(`/users/${editUser.id}`, form); toast.success('User updated') }
-      else { await api.post('/users', form); toast.success('User created') }
+      if (editUser) { await updateUser(editUser.id, { full_name: form.full_name, email: form.email, mobile: form.mobile, role: form.role || form.role_name, is_active: form.is_active }); toast.success('User updated') }
+      else { await createUser(form); toast.success('User created') }
       setShowForm(false); load()
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
-  const ROLE_COLORS = { owner:'badge-danger', manager:'badge-warning', staff:'badge-info', accountant:'badge-primary' }
+  const ROLE_COLORS = { owner:'badge-danger', manager:'badge-warning', staff:'badge-info', billing:'badge-info', accountant:'badge-primary' }
 
   return (
     <div>

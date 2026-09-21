@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getVendors, getProducts, createPurchase } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
 export default function NewPurchase() {
+  const { user } = useAuth()
   const [vendors, setVendors] = useState([])
   const [products, setProducts] = useState([])
   const [form, setForm] = useState({ vendor_id: '', vendor_invoice_number: '', purchase_date: new Date().toISOString().split('T')[0], due_date: '', payment_mode: 'cash', paid_amount: 0, discount_amount: 0, notes: '' })
@@ -13,13 +15,13 @@ export default function NewPurchase() {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    api.get('/vendors', { params: { limit: 200 } }).then(r => setVendors(r.data.data))
+    getVendors({ limit: 200 }).then(r => setVendors(r.data))
     loadProducts()
   }, [])
   useEffect(() => { loadProducts() }, [search])
   async function loadProducts() {
-    const r = await api.get('/products', { params: { search, limit: 100 } })
-    setProducts(r.data.data)
+    const r = await getProducts({ search, limit: 100 })
+    setProducts(r.data)
   }
   function addItem(product) {
     setItems(prev => {
@@ -43,10 +45,11 @@ export default function NewPurchase() {
     if (items.length === 0) return toast.error('Add items to purchase')
     setSubmitting(true)
     try {
-      const res = await api.post('/purchases', { ...form, items, paid_amount: Number(form.paid_amount), discount_amount: Number(form.discount_amount) })
-      toast.success(`✅ Purchase ${res.data.purchase_number} created`)
+      const vendorObj = vendors.find(v => v.id === form.vendor_id)
+      const res = await createPurchase({ ...form, vendor_name: vendorObj?.name || '', items, paid_amount: Number(form.paid_amount), discount_amount: Number(form.discount_amount) }, user?.uid)
+      toast.success(`✅ Purchase ${res.purchase_number} created`)
       setItems([]); setForm({ vendor_id: '', vendor_invoice_number: '', purchase_date: new Date().toISOString().split('T')[0], due_date: '', payment_mode: 'cash', paid_amount: 0, discount_amount: 0, notes: '' })
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') } finally { setSubmitting(false) }
+    } catch (err) { toast.error(err.message || 'Failed') } finally { setSubmitting(false) }
   }
 
   return (

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getEmployees, createEmployee, updateEmployee } from '../../services/db'
 
 export default function Employees() {
   const [employees, setEmployees] = useState([])
@@ -11,8 +11,8 @@ export default function Employees() {
 
   useEffect(() => { load() }, [])
   async function load() {
-    const r = await api.get('/staff/employees')
-    setEmployees(r.data); setLoading(false)
+    const emps = await getEmployees()
+    setEmployees(emps); setLoading(false)
   }
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
@@ -23,10 +23,10 @@ export default function Employees() {
     e.preventDefault()
     if (!form.name || !form.basic_salary) return toast.error('Name and salary required')
     try {
-      if (editEmp) { await api.put(`/staff/employees/${editEmp.id}`, form); toast.success('Employee updated') }
-      else { await api.post('/staff/employees', form); toast.success('Employee added') }
+      if (editEmp) { await updateEmployee(editEmp.id, form); toast.success('Employee updated') }
+      else { await createEmployee(form); toast.success('Employee added') }
       setShowForm(false); load()
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   return (

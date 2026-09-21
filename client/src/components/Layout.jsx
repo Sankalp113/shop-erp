@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import api from '../services/api'
+import { getReminders } from '../services/db'
 
 const NAV = [
   { label: 'Dashboard', icon: '📊', path: '/' },
@@ -91,7 +91,7 @@ export default function Layout() {
   }, [location.pathname])
 
   useEffect(() => {
-    api.get('/reminders/notifications').then(r => setAlertCount(r.data.unread_count)).catch(() => {})
+    getReminders({ status: 'pending' }).then(reminders => setAlertCount(reminders.length)).catch(() => {})
   }, [])
 
   function toggleGroup(label) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../../services/api'
+import { getCategories, getProducts } from '../../services/db'
 
 export default function Products() {
   const navigate = useNavigate()
@@ -12,13 +12,13 @@ export default function Products() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
 
-  useEffect(() => { api.get('/products/meta/categories').then(r => setCategories(r.data)) }, [])
+  useEffect(() => { getCategories().then(setCategories) }, [])
   useEffect(() => { load() }, [search, catId, page])
 
   async function load() {
     setLoading(true)
-    const r = await api.get('/products', { params: { search, category_id: catId, page, limit: 50 } })
-    setProducts(r.data.data); setTotal(r.data.total); setLoading(false)
+    const r = await getProducts({ search, category_id: catId, limit: 50 })
+    setProducts(r.data); setTotal(r.total); setLoading(false)
   }
 
   return (

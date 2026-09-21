@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getExpenseCategories, getRecurringExpenses, createRecurringExpense, toggleRecurringExpense } from '../../services/db'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
@@ -12,22 +12,23 @@ export default function RecurringExpenses() {
   const [form, setForm] = useState({ name:'', category_id:'', amount:'', frequency:'monthly', next_due_date:'', payment_mode:'cash', vendor_person:'', notes:'' })
 
   useEffect(() => {
-    api.get('/expenses/categories').then(r => setCategories(r.data))
+    getExpenseCategories().then(setCategories)
     load()
   }, [])
 
-  async function load() { const r = await api.get('/expenses/recurring'); setItems(r.data); setLoading(false) }
+  async function load() { const items = await getRecurringExpenses(); setItems(items); setLoading(false) }
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
   async function submit(e) {
     e.preventDefault()
     if (!form.name || !form.amount || !form.next_due_date) return toast.error('Fill required fields')
-    try { await api.post('/expenses/recurring', form); toast.success('Recurring expense added'); setShowForm(false); load() }
-    catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    const cat = categories.find(c => c.id === form.category_id)
+    try { await createRecurringExpense({ ...form, category_name: cat?.name || '' }); toast.success('Recurring expense added'); setShowForm(false); load() }
+    catch (err) { toast.error(err.message || 'Failed') }
   }
 
   async function toggleActive(item) {
-    await api.put(`/expenses/recurring/${item.id}`, { ...item, is_active: item.is_active ? 0 : 1 })
+    await toggleRecurringExpense(item.id, !item.is_active)
     toast.success(item.is_active ? 'Paused' : 'Activated'); load()
   }
 

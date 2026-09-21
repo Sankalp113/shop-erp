@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getExpenseCategories, getExpenses, createExpense } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
 export default function Expenses() {
+  const { user } = useAuth()
   const [expenses, setExpenses] = useState([])
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
@@ -14,23 +16,35 @@ export default function Expenses() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ expense_date: new Date().toISOString().split('T')[0], category_id:'', description:'', amount:'', payment_mode:'cash', vendor_person:'', notes:'' })
 
-  useEffect(() => { api.get('/expenses/categories').then(r=>setCategories(r.data)) }, [])
+  useEffect(() => { getExpenseCategories().then(setCategories) }, [])
   useEffect(() => { load() }, [period, catId])
+
+  function getPeriodDates() {
+    const d = new Date(), f = d => d.toISOString().split('T')[0]
+    if (period === 'today') return { from: f(d), to: f(d) }
+    if (period === 'this_week') { const s = new Date(d); s.setDate(d.getDate()-d.getDay()); return { from: f(s), to: f(d) } }
+    if (period === 'this_month') return { from: f(d).slice(0,7)+'-01', to: f(d) }
+    if (period === 'last_month') { const lm = new Date(d.getFullYear(), d.getMonth()-1, 1); return { from: f(lm), to: f(new Date(d.getFullYear(), d.getMonth(), 0)) } }
+    return {}
+  }
 
   async function load() {
     setLoading(true)
-    const r = await api.get('/expenses', { params: { period: period !== 'custom' ? period : undefined, category_id: catId, limit: 100 } })
-    setExpenses(r.data.data); setTotal(r.data.total_amount); setLoading(false)
+    const range = getPeriodDates()
+    const r = await getExpenses({ ...range, category_id: catId })
+    setExpenses(r.data); setTotal(r.totals?.total || 0); setLoading(false)
   }
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
   async function submit(e) {
     e.preventDefault()
     if (!form.description || !form.amount) return toast.error('Description and amount required')
+    const cat = categories.find(c => c.id === form.category_id)
     try {
-      await api.post('/expenses', form); toast.success('Expense recorded')
+      await createExpense({ ...form, category_name: cat?.name || '' }, user?.uid)
+      toast.success('Expense recorded')
       setShowForm(false); setForm({ expense_date: new Date().toISOString().split('T')[0], category_id:'', description:'', amount:'', payment_mode:'cash', vendor_person:'', notes:'' }); load()
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   return (

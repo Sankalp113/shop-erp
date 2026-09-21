@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getProducts, getCategories, getCustomers, createSale } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = (n) => Number(n || 0).toFixed(2)
 const fmtRs = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
 
 export default function NewSale() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const searchRef = useRef(null)
 
   const [products, setProducts] = useState([])
@@ -25,7 +27,7 @@ export default function NewSale() {
   const [selCat, setSelCat] = useState('')
 
   useEffect(() => {
-    api.get('/products/meta/categories').then(r => setCategories(r.data))
+    getCategories().then(setCategories)
     loadProducts()
     searchRef.current?.focus()
   }, [])
@@ -33,18 +35,15 @@ export default function NewSale() {
   useEffect(() => { loadProducts() }, [search, selCat])
 
   async function loadProducts() {
-    const params = {}
-    if (search) params.search = search
-    if (selCat) params.category_id = selCat
-    const r = await api.get('/products', { params: { ...params, limit: 60 } })
-    setProducts(r.data.data)
+    const r = await getProducts({ search, category_id: selCat, limit: 60 })
+    setProducts(r.data)
   }
 
   useEffect(() => {
     if (!customerSearch.trim()) { setCustomerResults([]); return }
     const t = setTimeout(async () => {
-      const r = await api.get('/customers', { params: { search: customerSearch, limit: 8 } })
-      setCustomerResults(r.data.data)
+      const r = await getCustomers({ search: customerSearch, limit: 8 })
+      setCustomerResults(r.data)
     }, 300)
     return () => clearTimeout(t)
   }, [customerSearch])
@@ -109,7 +108,7 @@ export default function NewSale() {
 
     setSubmitting(true)
     try {
-      const res = await api.post('/sales', {
+      const res = await createSale({
         customer_id: customer?.id,
         customer_name: customer?.name,
         customer_mobile: customer?.mobile,
@@ -126,14 +125,14 @@ export default function NewSale() {
         credit_amount: Number(payments.credit),
         payment_mode: paymentMode,
         notes,
-      })
-      toast.success(`✅ Bill ${res.data.invoice_number} created — ${fmtRs(grandTotal)}`)
+      }, user?.uid, user?.username)
+      toast.success(`✅ Bill ${res.invoice_number} created — ${fmtRs(grandTotal)}`)
       setCartItems([])
       setCustomer(null)
       setBillDiscount(0)
       setPayments({ cash: 0, upi: 0, card: 0, credit: 0 })
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to create sale')
+      toast.error(err.message || 'Failed to create sale')
     } finally {
       setSubmitting(false)
     }
@@ -159,8 +158,8 @@ export default function NewSale() {
                   <div style={{ fontSize: 24, marginBottom: 8 }}>👕</div>
                   <div className="product-card-name">{p.name}</div>
                   <div className="product-card-price">{fmtRs(p.selling_price)}</div>
-                  <div className="product-card-stock" style={{ color: p.total_stock <= p.min_stock_level ? 'var(--danger)' : 'var(--text-muted)' }}>
-                    Stock: {p.total_stock}
+                  <div className="product-card-stock" style={{ color: (p.total_stock || 0) <= (p.min_stock_level || 5) ? 'var(--danger)' : 'var(--text-muted)' }}>
+                    Stock: {p.total_stock || 0}
                   </div>
                   {p.category_name && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{p.category_name}</div>}
                 </div>
@@ -177,7 +176,6 @@ export default function NewSale() {
             <span style={{ fontWeight: 700, fontSize: 15 }}>🛒 Cart ({cartItems.length})</span>
             {cartItems.length > 0 && <button className="btn btn-sm btn-ghost" onClick={() => setCartItems([])}>Clear</button>}
           </div>
-          {/* Customer selection */}
           <div style={{ position: 'relative' }}>
             {customer ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'rgba(16,185,129,0.1)', borderRadius: 8, border: '1px solid rgba(16,185,129,0.3)' }}>
@@ -206,7 +204,6 @@ export default function NewSale() {
           </div>
         </div>
 
-        {/* Cart Items */}
         <div className="pos-cart-items">
           {cartItems.length === 0
             ? <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontSize: 13 }}>
@@ -221,7 +218,7 @@ export default function NewSale() {
                     <span>{fmtRs(item.unit_price)}</span>
                     <span>·</span>
                     <input type="number" value={item.discount_percent} min="0" max="100" onChange={e => updateDiscount(idx, e.target.value)}
-                      style={{ width: 36, background: 'none', border: 'none', color: 'var(--warning)', fontSize: 11, padding: 0, outline: 'none', textAlign: 'center' }} /> %off
+                      style={{ width: 36, background: 'none', border: 'none', color: 'var(--warning)', fontSize: 11, padding: 0, outline: 'none', textAlign: 'center' }} />%off
                   </div>
                 </div>
                 <div className="cart-item-qty">
@@ -238,7 +235,6 @@ export default function NewSale() {
           }
         </div>
 
-        {/* Cart Footer */}
         <div className="pos-cart-footer">
           <div className="pos-total-row"><span>Subtotal</span><span>{fmtRs(subtotal)}</span></div>
           <div className="pos-total-row">
@@ -251,7 +247,6 @@ export default function NewSale() {
           <div className="divider" />
           <div className="pos-total-final"><span>Total</span><span style={{ color: 'var(--primary-light)' }}>{fmtRs(grandTotal)}</span></div>
 
-          {/* Payment modes */}
           <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
             {['cash', 'upi', 'card', 'credit', 'split'].map(m => (
               <button key={m} className={`btn btn-sm ${paymentMode === m ? 'btn-primary' : 'btn-secondary'}`}

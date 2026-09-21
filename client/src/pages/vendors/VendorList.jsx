@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getVendors, createVendor } from '../../services/db'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
@@ -16,8 +16,8 @@ export default function VendorList() {
   useEffect(() => { load() }, [search])
   async function load() {
     setLoading(true)
-    const r = await api.get('/vendors', { params: { search, limit: 100 } })
-    setVendors(r.data.data); setLoading(false)
+    const r = await getVendors({ search, limit: 100 })
+    setVendors(r.data); setLoading(false)
   }
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
@@ -25,10 +25,10 @@ export default function VendorList() {
     e.preventDefault()
     if (!form.name) return toast.error('Vendor name required')
     try {
-      await api.post('/vendors', form)
+      await createVendor(form)
       toast.success('Vendor added')
       setShowForm(false); setForm({ name:'',company_name:'',mobile:'',email:'',address:'',city:'',gstin:'',payment_terms:30,opening_balance:0,notes:'' }); load()
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   const totalOutstanding = vendors.reduce((s,v) => s + (v.total_outstanding||0), 0)

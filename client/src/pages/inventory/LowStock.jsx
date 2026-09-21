@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import api from '../../services/api'
+import { getLowStock } from '../../services/db'
 
 export default function LowStock() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { api.get('/inventory/low-stock').then(r => { setProducts(r.data); setLoading(false) }) }, [])
+  useEffect(() => { getLowStock().then(p => { setProducts(p); setLoading(false) }) }, [])
 
   return (
     <div>

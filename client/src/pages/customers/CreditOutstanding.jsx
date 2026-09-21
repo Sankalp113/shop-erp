@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../../services/api'
+import { getCreditOutstanding } from '../../services/db'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
@@ -11,8 +11,8 @@ export default function CreditOutstanding() {
   const [total, setTotal] = useState(0)
 
   useEffect(() => {
-    api.get('/reports/credit-outstanding').then(r => {
-      setData(r.data.data); setTotal(r.data.total)
+    getCreditOutstanding().then(r => {
+      setData(r.data); setTotal(r.total)
     }).finally(() => setLoading(false))
   }, [])
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
-import api from '../services/api'
+import { getReport } from '../services/db'
+import { exportToExcel } from '../utils/exportExcel'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 const PERIODS = ['today','yesterday','this_week','this_month','last_month','this_year','custom']
@@ -43,10 +44,53 @@ export default function Reports() {
   async function load() {
     setLoading(true)
     try {
-      const params = selected==='salary' ? { month } : { period, from: period==='custom'?from:undefined, to: period==='custom'?to:undefined }
-      const r = await api.get(`/reports/${selected}`, { params })
-      setData(r.data)
+      const dateRange = getDateRange()
+      const params = selected === 'salary' ? { month } : { ...dateRange }
+      const result = await getReport(selected, params)
+      setData(result)
     } catch { setData(null) } finally { setLoading(false) }
+  }
+
+  function exportReport() {
+    if (!data) return
+    const label = REPORTS.find(r => r.key === selected)?.label || selected
+    const dateLabel = selected === 'salary' ? month : `${from || period}`
+    const filename = `${label.replace(/[^a-z0-9]/gi,'_')}_${dateLabel}`
+
+    if (selected === 'sales' && data.data) {
+      exportToExcel([{ name: 'Sales', rows: data.data.map(s => ({ Invoice: s.invoice_number, Date: s.sale_date, Customer: s.customer_name||'Walk-in', Payment: s.payment_mode, 'Total (₹)': s.total_amount, 'Cash (₹)': s.cash_amount||0, 'UPI (₹)': s.upi_amount||0, 'Credit (₹)': s.credit_amount||0 })) }], filename)
+    } else if (selected === 'stock' && data.data) {
+      exportToExcel([{ name: 'Stock', rows: data.data.map(p => ({ Product: p.name, Category: p.category||'', 'Stock Qty': p.total_stock||0, 'Purchase Price': p.purchase_price||0, 'Selling Price': p.selling_price||0, 'Stock Value (₹)': p.stock_value||0 })) }], filename)
+    } else if (selected === 'expenses' && data.data) {
+      const rows = data.data.map(e => ({ Date: e.expense_date, Category: e.category_name||e.category||'', Description: e.description, 'Amount (₹)': e.amount, 'Payment Mode': e.payment_mode||'', Party: e.vendor_person||'' }))
+      const catRows = (data.by_category||[]).map(c => ({ Category: c.category, 'Total (₹)': c.total }))
+      exportToExcel([{ name: 'Expenses', rows }, { name: 'By Category', rows: catRows }], filename)
+    } else if (selected === 'profit' && data.summary) {
+      const summary = [{ Metric: 'Revenue', 'Amount (₹)': data.summary.total_revenue }, { Metric: 'Cost of Goods', 'Amount (₹)': data.summary.total_cost }, { Metric: 'Gross Profit', 'Amount (₹)': data.summary.gross_profit }, { Metric: 'Expenses', 'Amount (₹)': data.summary.expenses }, { Metric: 'Net Profit', 'Amount (₹)': data.summary.net_profit }]
+      exportToExcel([{ name: 'Profit & Loss', rows: summary }], filename)
+    } else if (selected === 'salary' && data.data) {
+      exportToExcel([{ name: 'Salary', rows: data.data.map(s => ({ Employee: s.employee_name, Designation: s.designation||'', 'Base Salary (₹)': s.base_salary, 'Bonus (₹)': s.bonus_amount||0, 'Deduction (₹)': s.deduction_amount||0, 'Net Salary (₹)': s.net_salary, Status: s.status })) }], filename)
+    } else if (selected === 'credit-outstanding' && data.data) {
+      exportToExcel([{ name: 'Credit Outstanding', rows: data.data.map(c => ({ Customer: c.name, Mobile: c.mobile||'', 'Pending Bills': c.pending_bills, 'Days Outstanding': c.days_outstanding, 'Outstanding (₹)': c.outstanding })) }], filename)
+    } else if (selected === 'product-performance' && data.data) {
+      exportToExcel([{ name: 'Product Performance', rows: data.data.map((p,i) => ({ '#': i+1, Product: p.product_name, 'Qty Sold': p.qty_sold, 'Revenue (₹)': p.revenue, 'Profit (₹)': p.profit })) }], filename)
+    } else if (selected === 'daily' && data) {
+      exportToExcel([{ name: 'Daily Summary', rows: [{ Metric:'Total Sales', Value: data.total_sales }, { Metric:'Bills', Value: data.bills }, { Metric:'Cash Sales', Value: data.cash_sales }, { Metric:'UPI Sales', Value: data.upi_sales }, { Metric:'Credit Sales', Value: data.credit_sales }, { Metric:'Purchases', Value: data.purchases }, { Metric:'Expenses', Value: data.expenses }, { Metric:'Gross Profit', Value: data.gross_profit }, { Metric:'Customer Outstanding', Value: data.customer_outstanding }] }], filename)
+    } else {
+      alert('Export not supported for this report type yet. Data is shown above.')
+    }
+  }
+
+  function getDateRange() {
+    const d = new Date(), f = d => d.toISOString().split('T')[0]
+    if (period === 'today') return { from: f(d), to: f(d) }
+    if (period === 'yesterday') { const y = new Date(d-86400000); return { from: f(y), to: f(y) } }
+    if (period === 'this_week') { const s = new Date(d); s.setDate(d.getDate()-d.getDay()); return { from: f(s), to: f(d) } }
+    if (period === 'this_month') return { from: f(d).slice(0,7)+'-01', to: f(d) }
+    if (period === 'last_month') { const lm = new Date(d.getFullYear(),d.getMonth()-1,1); return { from: f(lm), to: f(new Date(d.getFullYear(),d.getMonth(),0)) } }
+    if (period === 'this_year') return { from: `${d.getFullYear()}-01-01`, to: f(d) }
+    if (period === 'custom') return { from, to }
+    return {}
   }
 
   const report = REPORTS.find(r=>r.key===selected)
@@ -83,7 +127,16 @@ export default function Reports() {
               <input type="date" className="form-control" style={{width:'auto'}} value={from} onChange={e=>setFrom(e.target.value)}/>
               <input type="date" className="form-control" style={{width:'auto'}} value={to} onChange={e=>setTo(e.target.value)}/>
             </>}
+            <button
+              className="btn btn-success btn-sm"
+              style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6}}
+              disabled={!data || loading}
+              onClick={exportReport}
+            >
+              📥 Export Excel
+            </button>
           </div>
+
 
           {loading ? <div className="loading-overlay" style={{height:300}}><span className="loading-spinner" style={{width:32,height:32}}/></div>
             : !data ? <div className="empty-state"><div className="empty-state-icon">📊</div><h3>No data available</h3></div>

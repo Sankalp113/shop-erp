@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getSettings, updateSettings } from '../../services/db'
 
 const SETTING_GROUPS = [
   { label:'🏪 Shop Information', keys: ['shop_name','shop_address','shop_city','shop_mobile','shop_email','shop_gstin'] },
@@ -22,13 +22,13 @@ export default function Settings() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    api.get('/settings').then(r => setSettings(r.data)).finally(()=>setLoading(false))
+    getSettings().then(setSettings).finally(()=>setLoading(false))
   }, [])
 
   async function save() {
     setSaving(true)
-    try { await api.put('/settings', settings); toast.success('✅ Settings saved') }
-    catch (err) { toast.error(err.response?.data?.error || 'Failed to save') } finally { setSaving(false) }
+    try { await updateSettings(settings); toast.success('✅ Settings saved') }
+    catch (err) { toast.error(err.message || 'Failed to save') } finally { setSaving(false) }
   }
 
   const BOOL_KEYS = ['show_tax_on_bill','show_discount_on_bill','enable_negative_stock','auto_generate_product_code','enable_bank_reconciliation','backup_enabled']

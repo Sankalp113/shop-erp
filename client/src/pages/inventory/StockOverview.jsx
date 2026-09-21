@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import api from '../../services/api'
+import { getCategories, getStock } from '../../services/db'
 
 export default function StockOverview() {
   const [stock, setStock] = useState([])
@@ -10,13 +10,13 @@ export default function StockOverview() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
 
-  useEffect(() => { api.get('/products/meta/categories').then(r => setCategories(r.data)) }, [])
+  useEffect(() => { getCategories().then(setCategories) }, [])
   useEffect(() => { load() }, [search, catId, page])
 
   async function load() {
     setLoading(true)
-    const r = await api.get('/inventory/stock', { params: { search, category_id: catId, page, limit: 50 } })
-    setStock(r.data.data); setTotal(r.data.total); setLoading(false)
+    const r = await getStock({ search, category_id: catId })
+    setStock(r.data); setTotal(r.total); setLoading(false)
   }
 
   const totalValue = stock.reduce((s, p) => s + p.total_stock * p.purchase_price, 0)

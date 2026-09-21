@@ -1,28 +1,30 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getRentRecords, addRentRecord, payRentByMode } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
 export default function Rent() {
+  const { user } = useAuth()
   const [rents, setRents] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ rent_type:'monthly', period_start:'', period_end:'', amount:'', due_date:'', landlord_name:'', notes:'' })
 
   useEffect(() => { load() }, [])
-  async function load() { const r = await api.get('/expenses/rent'); setRents(r.data); setLoading(false) }
+  async function load() { const recs = await getRentRecords(); setRents(recs); setLoading(false) }
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
   async function submit(e) {
     e.preventDefault()
-    try { await api.post('/expenses/rent', form); toast.success('Rent record added'); setShowForm(false); load() }
-    catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    try { await addRentRecord(form, user?.uid); toast.success('Rent record added'); setShowForm(false); load() }
+    catch (err) { toast.error(err.message || 'Failed') }
   }
 
   async function pay(id, mode='cash') {
-    try { await api.post(`/expenses/rent/${id}/pay`, { payment_mode: mode }); toast.success('Rent marked as paid'); load() }
-    catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    try { await payRentByMode(id, mode, user?.uid); toast.success('Rent marked as paid'); load() }
+    catch (err) { toast.error(err.message || 'Failed') }
   }
 
   const pending = rents.filter(r=>r.status==='pending')

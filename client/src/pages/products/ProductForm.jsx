@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getCategories, getBrands, getSizes, getColors, getProduct, createProduct, updateProduct } from '../../services/db'
 
 export default function ProductForm() {
   const { id } = useParams()
@@ -20,13 +20,13 @@ export default function ProductForm() {
   const [variants, setVariants] = useState([])
 
   useEffect(() => {
-    api.get('/products/meta/categories').then(r => setCategories(r.data))
-    api.get('/products/meta/brands').then(r => setBrands(r.data))
-    api.get('/products/meta/sizes').then(r => setSizes(r.data))
-    api.get('/products/meta/colors').then(r => setColors(r.data))
+    getCategories().then(setCategories)
+    getBrands().then(setBrands)
+    getSizes().then(setSizes)
+    getColors().then(setColors)
     if (isEdit) {
-      api.get(`/products/${id}`).then(r => {
-        const p = r.data
+      getProduct(id).then(p => {
+        if (!p) return
         setForm({ name: p.name, sku: p.sku || '', category_id: p.category_id || '', brand_id: p.brand_id || '', description: p.description || '', purchase_price: p.purchase_price, selling_price: p.selling_price, mrp: p.mrp || '', discount_percent: p.discount_percent || 0, tax_percent: p.tax_percent || 0, min_stock_level: p.min_stock_level || 5, location: p.location || '', has_variants: p.has_variants === 1, opening_stock: 0 })
         if (p.variants?.length) setVariants(p.variants)
       })
@@ -49,14 +49,14 @@ export default function ProductForm() {
     try {
       const payload = { ...form, variants: form.has_variants ? variants : [] }
       if (isEdit) {
-        await api.put(`/products/${id}`, payload)
+        await updateProduct(id, payload)
         toast.success('Product updated')
       } else {
-        await api.post('/products', payload)
+        await createProduct(payload)
         toast.success('Product created')
       }
       navigate('/products')
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') } finally { setLoading(false) }
+    } catch (err) { toast.error(err.message || 'Failed') } finally { setLoading(false) }
   }
 
   return (

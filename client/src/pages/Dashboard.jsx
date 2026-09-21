@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import api from '../services/api'
+import { getDashboardSummary, getDashboardAlerts, getDashboardCharts } from '../services/db'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`
 
@@ -57,13 +57,13 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([
-      api.get('/dashboard/summary'),
-      api.get('/dashboard/alerts'),
-      api.get('/dashboard/charts'),
+      getDashboardSummary(),
+      getDashboardAlerts(),
+      getDashboardCharts(),
     ]).then(([s, a, c]) => {
-      setSummary(s.data)
-      setAlerts(a.data)
-      setCharts(c.data)
+      setSummary(s)
+      setAlerts(a)
+      setCharts(c)
     }).finally(() => setLoading(false))
   }, [])
 
@@ -86,7 +86,6 @@ export default function Dashboard() {
 
   return (
     <div className="fade-in">
-      {/* Header */}
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h1>📊 Dashboard</h1>
@@ -97,21 +96,17 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* KPI Cards */}
       <div className="kpi-grid" style={{ marginBottom: 24 }}>
         {KPI_CONFIGS.map(cfg => (
           <div key={cfg.key} className="kpi-card" style={{ '--kpi-color': cfg.color, '--kpi-bg': cfg.bg }}>
             <div className="kpi-icon">{cfg.icon}</div>
             <div className="kpi-label">{cfg.label}</div>
-            <div className="kpi-value">
-              {cfg.noRupee ? (today[cfg.key] || 0) : fmt(today[cfg.key])}
-            </div>
+            <div className="kpi-value">{cfg.noRupee ? (today[cfg.key] || 0) : fmt(today[cfg.key])}</div>
             <div className="kpi-sub">{cfg.sub(today)}</div>
           </div>
         ))}
       </div>
 
-      {/* Balance Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
         {BALANCE_CONFIGS.map(cfg => (
           <div key={cfg.key} className="card" style={{ background: `rgba(${cfg.color === '#10B981' ? '16,185,129' : cfg.color === '#F59E0B' ? '245,158,11' : '239,68,68'},0.07)`, border: `1px solid rgba(${cfg.color === '#10B981' ? '16,185,129' : cfg.color === '#F59E0B' ? '245,158,11' : '239,68,68'},0.2)` }}>
@@ -126,14 +121,9 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Charts + Alerts row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 340px', gap: 16, marginBottom: 24 }}>
-
-        {/* Sales 7 days */}
         <div className="card">
-          <div className="card-header">
-            <span className="card-title">Sales — Last 7 Days</span>
-          </div>
+          <div className="card-header"><span className="card-title">Sales — Last 7 Days</span></div>
           <div className="card-body">
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={charts?.sales7Days || []} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
@@ -152,11 +142,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Monthly trend */}
         <div className="card">
-          <div className="card-header">
-            <span className="card-title">Monthly Sales Trend</span>
-          </div>
+          <div className="card-header"><span className="card-title">Monthly Sales Trend</span></div>
           <div className="card-body">
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={charts?.monthlySales || []} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
@@ -169,11 +156,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Payment mode pie */}
         <div className="card">
-          <div className="card-header">
-            <span className="card-title">Payment Modes</span>
-          </div>
+          <div className="card-header"><span className="card-title">Payment Modes</span></div>
           <div className="card-body">
             {paymentPie.length > 0 ? (
               <>
@@ -205,10 +189,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Alerts + Quick Actions */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-
-        {/* Alerts */}
         <div className="card">
           <div className="card-header" style={{ marginBottom: 16 }}>
             <span className="card-title">🚨 Alerts & Reminders</span>
@@ -261,7 +242,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Quick Actions */}
         <div className="card">
           <div className="card-header" style={{ marginBottom: 16 }}>
             <span className="card-title">⚡ Quick Actions</span>
@@ -281,9 +261,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Top products + Customer outstanding */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        {/* Top Products */}
         <div className="card">
           <div className="card-header" style={{ marginBottom: 16 }}>
             <span className="card-title">🏆 Top Products (This Month)</span>
@@ -317,7 +295,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Customer Outstanding */}
         <div className="card">
           <div className="card-header" style={{ marginBottom: 16 }}>
             <span className="card-title">💳 Credit Outstanding</span>

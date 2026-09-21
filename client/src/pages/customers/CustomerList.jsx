@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getCustomers, createCustomer } from '../../services/db'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
@@ -16,8 +16,8 @@ export default function CustomerList() {
   useEffect(() => { load() }, [search])
   async function load() {
     setLoading(true)
-    const r = await api.get('/customers', { params: { search, limit: 100 } })
-    setCustomers(r.data.data); setLoading(false)
+    const r = await getCustomers({ search, limit: 100 })
+    setCustomers(r.data); setLoading(false)
   }
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
@@ -25,13 +25,13 @@ export default function CustomerList() {
     e.preventDefault()
     if (!form.name) return toast.error('Customer name required')
     try {
-      await api.post('/customers', form)
+      await createCustomer(form)
       toast.success('Customer added'); setShowForm(false)
       setForm({ name:'',mobile:'',email:'',address:'',city:'',credit_limit:0,opening_balance:0,notes:'' }); load()
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
-  const totalOutstanding = customers.reduce((s,c) => s + (c.total_outstanding||0), 0)
+  const totalOutstanding = customers.reduce((s,c) => s + (c.outstanding||0), 0)
 
   return (
     <div>

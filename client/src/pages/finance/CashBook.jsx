@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getCashBook, addCashTransaction } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
 export default function CashBook() {
+  const { user } = useAuth()
   const [transactions, setTransactions] = useState([])
   const [balance, setBalance] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -17,19 +19,19 @@ export default function CashBook() {
 
   async function load() {
     setLoading(true)
-    const r = await api.get('/finance/cash', { params: { from, to, limit: 200 } })
-    setTransactions(r.data.data); setBalance(r.data.current_balance); setLoading(false)
+    const r = await getCashBook({ from, to })
+    setTransactions(r.data); setBalance(r.current_balance); setLoading(false)
   }
 
   async function submit(e) {
     e.preventDefault()
-    const amt = form.transaction_type === 'payment' ? -Math.abs(Number(form.amount)) : Math.abs(Number(form.amount))
+    const isOut = form.transaction_type === 'payment'
     try {
-      await api.post('/finance/cash', { ...form, amount: amt })
+      await addCashTransaction({ ...form, is_inflow: !isOut, amount: Number(form.amount) }, user?.uid)
       toast.success('Transaction recorded'); setShowForm(false)
       setForm({ transaction_date: new Date().toISOString().split('T')[0], transaction_type:'receipt', description:'', amount:'' })
       load()
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   const totalIn = transactions.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0)

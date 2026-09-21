@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getCustomer, getCustomerLedger, getSales, updateCustomer, recordCustomerPayment } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
 export default function CustomerDetail() {
   const { id } = useParams(); const navigate = useNavigate()
+  const { user } = useAuth()
   const [customer, setCustomer] = useState(null)
   const [ledger, setLedger] = useState([])
   const [sales, setSales] = useState([])
@@ -20,26 +22,27 @@ export default function CustomerDetail() {
   useEffect(() => { load() }, [id])
   async function load() {
     const [c, l, s] = await Promise.all([
-      api.get(`/customers/${id}`),
-      api.get(`/customers/${id}/ledger`),
-      api.get('/sales', { params: { customer_id: id, limit: 50 } }),
+      getCustomer(id),
+      getCustomerLedger(id),
+      getSales({ customer_id: id, limit: 50 }),
     ])
-    setCustomer(c.data); setForm(c.data)
-    setLedger(l.data); setSales(s.data.data)
+    setCustomer(c); setForm(c || {})
+    setLedger(l)
+    setSales(s?.data || [])
     setLoading(false)
   }
 
   async function saveEdit() {
-    try { await api.put(`/customers/${id}`, form); toast.success('Customer updated'); setEditing(false); load() }
-    catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    try { await updateCustomer(id, form); toast.success('Customer updated'); setEditing(false); load() }
+    catch (err) { toast.error(err.message || 'Failed') }
   }
 
   async function recordPayment() {
     if (!payForm.amount) return toast.error('Enter amount')
     try {
-      await api.post(`/customers/${id}/payment`, payForm)
+      await recordCustomerPayment(id, payForm, user?.uid)
       toast.success('Payment collected'); setPayModal(false); load()
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   if (loading) return <div className="loading-overlay"><span className="loading-spinner"/></div>

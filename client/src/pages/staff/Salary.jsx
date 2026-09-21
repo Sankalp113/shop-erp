@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getEmployees, getSalaries, generateSalaries, paySalary } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
 export default function Salary() {
+  const { user } = useAuth()
   const [employees, setEmployees] = useState([])
   const [salaries, setSalaries] = useState([])
   const [month, setMonth] = useState(new Date().toISOString().substring(0,7))
@@ -15,27 +17,27 @@ export default function Salary() {
   useEffect(() => { loadEmployees() }, [])
   useEffect(() => { loadSalaries() }, [month])
 
-  async function loadEmployees() { const r = await api.get('/staff/employees'); setEmployees(r.data) }
+  async function loadEmployees() { const emps = await getEmployees(); setEmployees(emps) }
   async function loadSalaries() {
     setLoading(true)
-    const r = await api.get('/staff/salaries', { params: { month } })
-    setSalaries(r.data.data || r.data); setLoading(false)
+    const recs = await getSalaries({ month })
+    setSalaries(recs); setLoading(false)
   }
 
   async function generate() {
     if (!confirm(`Generate salary records for ${month}?`)) return
     setGenerating(true)
     try {
-      await api.post('/staff/salaries/generate', { month })
+      await generateSalaries(month, employees, user?.uid)
       toast.success('Salary records generated'); loadSalaries()
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') } finally { setGenerating(false) }
+    } catch (err) { toast.error(err.message || 'Failed') } finally { setGenerating(false) }
   }
 
   async function markPaid(salary) {
     try {
-      await api.post(`/staff/salary/${salary.id}/pay`, { payment_date: new Date().toISOString().split('T')[0], payment_mode: 'cash' })
+      await paySalary(salary.id, { payment_date: new Date().toISOString().split('T')[0], payment_mode: 'cash' }, user?.uid)
       toast.success('Salary marked as paid'); loadSalaries(); setPayModal(null)
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   const totalNet = salaries.reduce((s,sl) => s+(sl.net_salary||0), 0)

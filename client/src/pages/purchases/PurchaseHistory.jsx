@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getVendors, getPurchases, getPurchase, recordPurchasePayment } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
 export default function PurchaseHistory() {
+  const { user } = useAuth()
   const [purchases, setPurchases] = useState([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('this_month')
@@ -16,30 +18,38 @@ export default function PurchaseHistory() {
   const [payModal, setPayModal] = useState(null)
   const [payForm, setPayForm] = useState({ amount: '', payment_mode: 'cash', payment_date: new Date().toISOString().split('T')[0] })
 
-  useEffect(() => { api.get('/vendors', { params: { limit: 200 } }).then(r => setVendors(r.data.data)) }, [])
+  useEffect(() => { getVendors({ limit: 200 }).then(r => setVendors(r.data)) }, [])
   useEffect(() => { load() }, [period, from, to, vendorId, page])
+
+  function getDateRange() {
+    const d = new Date(), f = d => d.toISOString().split('T')[0]
+    if (period === 'today') return { from: f(d), to: f(d) }
+    if (period === 'this_week') { const s = new Date(d); s.setDate(d.getDate() - d.getDay()); return { from: f(s), to: f(d) } }
+    if (period === 'this_month') return { from: f(d).slice(0,7) + '-01', to: f(d) }
+    if (period === 'last_month') { const lm = new Date(d.getFullYear(), d.getMonth()-1, 1); const le = new Date(d.getFullYear(), d.getMonth(), 0); return { from: f(lm), to: f(le) } }
+    if (period === 'custom') return { from, to }
+    return {}
+  }
 
   async function load() {
     setLoading(true)
-    const params = { page, limit: 50, vendor_id: vendorId }
-    if (period !== 'custom') params.period = period
-    else { params.from = from; params.to = to }
-    const r = await api.get('/purchases', { params })
-    setPurchases(r.data.data); setTotal(r.data.total); setLoading(false)
+    const range = getDateRange()
+    const r = await getPurchases({ ...range, vendor_id: vendorId, limit: 50 })
+    setPurchases(r.data); setTotal(r.total); setLoading(false)
   }
 
   async function loadDetail(id) {
-    const r = await api.get(`/purchases/${id}`)
-    setDetail(r.data)
+    const p = await getPurchase(id)
+    setDetail(p)
   }
 
   async function makePayment() {
     try {
-      await api.post(`/purchases/${payModal.id}/payment`, payForm)
+      await recordPurchasePayment(payModal.id, payForm, user?.uid)
       toast.success('Payment recorded')
       setPayModal(null); load()
       if (detail?.id === payModal.id) loadDetail(payModal.id)
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   const statusBadge = s => ({ paid: 'badge-success', partial: 'badge-warning', pending: 'badge-danger' }[s] || 'badge-muted')

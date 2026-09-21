@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getSales, getSale, cancelSale as dbCancelSale } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`
 
@@ -9,6 +10,7 @@ const PERIODS = ['today', 'yesterday', 'this_week', 'this_month', 'last_month', 
 
 export default function SalesHistory() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [sales, setSales] = useState([])
   const [totals, setTotals] = useState({})
   const [loading, setLoading] = useState(true)
@@ -22,31 +24,41 @@ export default function SalesHistory() {
 
   useEffect(() => { load() }, [period, from, to, search, page])
 
+  function getDateRange() {
+    const d = new Date(), f = d => d.toISOString().split('T')[0]
+    if (period === 'today') return { from: f(d), to: f(d) }
+    if (period === 'yesterday') { const y = new Date(d - 86400000); return { from: f(y), to: f(y) } }
+    if (period === 'this_week') { const s = new Date(d); s.setDate(d.getDate() - d.getDay()); return { from: f(s), to: f(d) } }
+    if (period === 'this_month') return { from: f(d).slice(0,7) + '-01', to: f(d) }
+    if (period === 'last_month') { const lm = new Date(d.getFullYear(), d.getMonth()-1, 1); const le = new Date(d.getFullYear(), d.getMonth(), 0); return { from: f(lm), to: f(le) } }
+    if (period === 'custom') return { from, to }
+    return {}
+  }
+
   async function load() {
     setLoading(true)
     try {
-      const params = { period, page, limit: 50, search }
-      if (period === 'custom') { params.from = from; params.to = to }
-      const r = await api.get('/sales', { params })
-      setSales(r.data.data)
-      setTotals(r.data.totals || {})
-      setTotalCount(r.data.total)
+      const range = getDateRange()
+      const r = await getSales({ ...range, search, limit: 50 })
+      setSales(r.data)
+      setTotals(r.totals || {})
+      setTotalCount(r.total)
     } finally { setLoading(false) }
   }
 
   async function loadDetail(id) {
-    const r = await api.get(`/sales/${id}`)
-    setDetail(r.data)
+    const sale = await getSale(id)
+    setDetail(sale)
   }
 
   async function cancelSale(id) {
     if (!confirm('Cancel this sale? Stock will be restored.')) return
     try {
-      await api.post(`/sales/${id}/cancel`)
+      await dbCancelSale(id, user?.uid, user?.username)
       toast.success('Sale cancelled')
       load()
       setDetail(null)
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   const statusBadge = (s) => {

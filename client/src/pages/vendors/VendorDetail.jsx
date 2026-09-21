@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getVendor, getVendorLedger, getPurchases, updateVendor } from '../../services/db'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
@@ -19,20 +19,20 @@ export default function VendorDetail() {
   useEffect(() => { load() }, [id])
   async function load() {
     const [v, l, p] = await Promise.all([
-      api.get(`/vendors/${id}`),
-      api.get(`/vendors/${id}/ledger`),
-      api.get('/purchases', { params: { vendor_id: id, limit: 50 } }),
+      getVendor(id),
+      getVendorLedger(id),
+      getPurchases({ vendor_id: id, limit: 50 }),
     ])
-    setVendor(v.data); setForm(v.data)
-    setLedger(l.data); setPurchases(p.data.data)
+    setVendor(v); setForm(v || {})
+    setLedger(l); setPurchases(p?.data || [])
     setLoading(false)
   }
 
   async function saveEdit() {
     try {
-      await api.put(`/vendors/${id}`, form)
+      await updateVendor(id, form)
       toast.success('Vendor updated'); setEditing(false); load()
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   if (loading) return <div className="loading-overlay"><span className="loading-spinner"/></div>

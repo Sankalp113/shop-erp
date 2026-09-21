@@ -1,31 +1,37 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getProducts, getStockAdjustments, createStockAdjustment } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const TYPES = ['damaged', 'missing', 'physical_count', 'expired', 'sample', 'internal_use', 'correction']
 
 export default function StockAdjustments() {
+  const { user } = useAuth()
   const [adjustments, setAdjustments] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [products, setProducts] = useState([])
   const [form, setForm] = useState({ product_id: '', adjustment_type: 'damaged', quantity_change: '', reason: '', notes: '' })
 
-  useEffect(() => { load(); api.get('/products', { params: { limit: 200 } }).then(r => setProducts(r.data.data)) }, [])
+  useEffect(() => {
+    load()
+    getProducts({ limit: 200 }).then(r => setProducts(r.data))
+  }, [])
 
   async function load() {
-    const r = await api.get('/inventory/adjustments')
-    setAdjustments(r.data.data); setLoading(false)
+    const r = await getStockAdjustments()
+    setAdjustments(r.data); setLoading(false)
   }
 
   async function submit(e) {
     e.preventDefault()
     if (!form.product_id || !form.quantity_change || !form.reason) return toast.error('Fill all required fields')
+    const selProduct = products.find(p => p.id === form.product_id)
     try {
-      await api.post('/inventory/adjustments', { ...form, quantity_change: Number(form.quantity_change) })
+      await createStockAdjustment({ ...form, quantity_change: Number(form.quantity_change), product_name: selProduct?.name }, user?.uid)
       toast.success('Stock adjustment recorded')
       setShowForm(false); setForm({ product_id: '', adjustment_type: 'damaged', quantity_change: '', reason: '', notes: '' }); load()
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))

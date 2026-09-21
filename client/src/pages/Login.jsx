@@ -19,7 +19,7 @@ export default function Login() {
       toast.success('Welcome back!')
       navigate('/')
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed. Check your credentials.')
+      setError(err.message || 'Login failed. Check your credentials.')
     } finally {
       setLoading(false)
     }

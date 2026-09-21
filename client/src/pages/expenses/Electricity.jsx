@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getElectricityBills, addElectricityBill, payElectricityBillByMode } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
 export default function Electricity() {
+  const { user } = useAuth()
   const [bills, setBills] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -12,18 +14,18 @@ export default function Electricity() {
   const [form, setForm] = useState({ consumer_number:'',meter_number:'',bill_date:new Date().toISOString().split('T')[0],billing_period_start:'',billing_period_end:'',previous_reading:0,current_reading:0,units_consumed:0,bill_amount:'',due_date:'',notes:'' })
 
   useEffect(() => { load() }, [])
-  async function load() { const r = await api.get('/expenses/electricity'); setBills(r.data); setLoading(false) }
+  async function load() { const bills = await getElectricityBills(); setBills(bills); setLoading(false) }
   const set = (k,v) => setForm(p => ({ ...p, [k]:v, ...(k==='previous_reading'||k==='current_reading' ? { units_consumed: k==='current_reading' ? Math.max(0,v - p.previous_reading) : Math.max(0, p.current_reading - v) } : {}) }))
 
   async function submit(e) {
     e.preventDefault()
-    try { await api.post('/expenses/electricity', form); toast.success('Bill added'); setShowForm(false); load() }
-    catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    try { await addElectricityBill(form, user?.uid); toast.success('Bill added'); setShowForm(false); load() }
+    catch (err) { toast.error(err.message || 'Failed') }
   }
 
   async function pay(id, mode) {
-    try { await api.post(`/expenses/electricity/${id}/pay`, { payment_mode: mode }); toast.success('Bill marked as paid'); setPayModal(null); load() }
-    catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    try { await payElectricityBillByMode(id, mode, user?.uid); toast.success('Bill marked as paid'); setPayModal(null); load() }
+    catch (err) { toast.error(err.message || 'Failed') }
   }
 
   return (

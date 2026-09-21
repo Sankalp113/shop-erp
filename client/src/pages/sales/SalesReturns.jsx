@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getSaleReturns, getSales, getSale, createSaleReturn } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`
 
 export default function SalesReturns() {
+  const { user } = useAuth()
   const [returns, setReturns] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -14,20 +16,19 @@ export default function SalesReturns() {
   const [reason, setReason] = useState('')
   const [refundMode, setRefundMode] = useState('cash')
 
-  useEffect(() => { load() }, [])
   async function load() {
-    const r = await api.get('/sales/returns/list')
-    setReturns(r.data.data)
+    const r = await getSaleReturns()
+    setReturns(r.data)
     setLoading(false)
   }
   async function searchInvoice() {
     try {
-      const r = await api.get('/sales', { params: { search: origInvoice } })
-      const sale = r.data.data[0]
+      const r = await getSales({ search: origInvoice })
+      const sale = r.data[0]
       if (!sale) return toast.error('Invoice not found')
-      const det = await api.get(`/sales/${sale.id}`)
-      setOrigSale(det.data)
-      setReturnItems(det.data.items.map(i => ({ ...i, return_qty: 0, returning: false })))
+      const det = await getSale(sale.id)
+      setOrigSale(det)
+      setReturnItems(det.items.map(i => ({ ...i, return_qty: 0, returning: false })))
     } catch { toast.error('Invoice not found') }
   }
   async function submitReturn() {
@@ -37,11 +38,11 @@ export default function SalesReturns() {
     }))
     if (!items.length) return toast.error('Select items to return')
     try {
-      await api.post('/sales/returns', { original_sale_id: origSale.id, items, return_reason: reason, refund_mode: refundMode })
+      await createSaleReturn({ original_sale_id: origSale.id, items, return_reason: reason, refund_mode: refundMode }, user?.uid)
       toast.success('Return processed')
       setShowForm(false); setOrigSale(null); setReturnItems([]); setOrigInvoice('')
       load()
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   return (

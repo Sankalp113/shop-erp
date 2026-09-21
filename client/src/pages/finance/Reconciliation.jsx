@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import api from '../../services/api'
+import { getReconciliation, getFinanceSummary } from '../../services/db'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
@@ -14,10 +14,10 @@ export default function Reconciliation() {
   async function load() {
     setLoading(true)
     const [rec, fin] = await Promise.all([
-      api.get('/finance/reconciliation', { params: { date } }),
-      api.get('/finance/summary'),
+      getReconciliation(date),
+      getFinanceSummary(),
     ])
-    setData(rec.data); setSummary(fin.data); setLoading(false)
+    setData(rec); setSummary(fin); setLoading(false)
   }
 
   return (

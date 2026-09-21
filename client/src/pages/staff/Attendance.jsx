@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getEmployees, getAttendance, saveAttendance } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 export default function Attendance() {
+  const { user } = useAuth()
   const [employees, setEmployees] = useState([])
   const [attendance, setAttendance] = useState([])
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -16,22 +18,22 @@ export default function Attendance() {
   useEffect(() => { if(tab==='daily') loadDaily(); else loadMonthly() }, [date, month, tab])
 
   async function loadEmployees() {
-    const r = await api.get('/staff/employees')
-    setEmployees(r.data)
+    const emps = await getEmployees()
+    setEmployees(emps)
   }
 
   async function loadDaily() {
     setLoading(true)
-    const r = await api.get('/staff/attendance', { params: { date } })
+    const recs = await getAttendance({ date })
     const map = {}
-    r.data.forEach(a => map[a.employee_id] = { status: a.status, check_in: a.check_in_time, check_out: a.check_out_time, notes: a.notes||'' })
+    recs.forEach(a => map[a.employee_id] = { status: a.status, check_in: a.check_in_time, check_out: a.check_out_time, notes: a.notes||'' })
     setStatuses(map); setLoading(false)
   }
 
   async function loadMonthly() {
     setLoading(true)
-    const r = await api.get('/staff/attendance', { params: { month } })
-    setAttendance(r.data); setLoading(false)
+    const recs = await getAttendance({ month })
+    setAttendance(recs); setLoading(false)
   }
 
   function setStatus(empId, field, value) {
@@ -42,16 +44,16 @@ export default function Attendance() {
     setSaving(true)
     try {
       const records = employees.map(e => ({
-        employee_id: e.id,
+        employee_id: e.id, employee_name: e.name,
         attendance_date: date,
         status: statuses[e.id]?.status || 'present',
         check_in_time: statuses[e.id]?.check_in || null,
         check_out_time: statuses[e.id]?.check_out || null,
         notes: statuses[e.id]?.notes || '',
       }))
-      await api.post('/staff/attendance/bulk', { records })
+      await saveAttendance(records, user?.uid)
       toast.success('Attendance saved')
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed') } finally { setSaving(false) }
+    } catch (err) { toast.error(err.message || 'Failed') } finally { setSaving(false) }
   }
 
   const STATUS_OPTS = [

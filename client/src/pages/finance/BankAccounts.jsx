@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import api from '../../services/api'
+import { getBankAccounts, addBankAccount, getBankTransactions, addBankTransactionFixed } from '../../services/db'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
 export default function BankAccounts() {
+  const { user } = useAuth()
   const [accounts, setAccounts] = useState([])
   const [selected, setSelected] = useState(null)
   const [transactions, setTransactions] = useState([])
@@ -20,20 +22,29 @@ export default function BankAccounts() {
   useEffect(() => { loadAccounts() }, [])
   useEffect(() => { if(selected) loadTxns() }, [selected, txnFrom, txnTo])
 
-  async function loadAccounts() { const r = await api.get('/finance/bank/accounts'); setAccounts(r.data); if(r.data.length>0&&!selected) setSelected(r.data[0].id); setLoading(false) }
-  async function loadTxns() { setTxnLoading(true); const r = await api.get(`/finance/bank/${selected}/transactions`, { params:{from:txnFrom,to:txnTo,limit:200} }); setTransactions(r.data.data); setTxnLoading(false) }
+  async function loadAccounts() {
+    const accs = await getBankAccounts()
+    setAccounts(accs)
+    if (accs.length > 0 && !selected) setSelected(accs[0].id)
+    setLoading(false)
+  }
+  async function loadTxns() {
+    setTxnLoading(true)
+    const txns = await getBankTransactions(selected, { from: txnFrom, to: txnTo })
+    setTransactions(txns); setTxnLoading(false)
+  }
 
   async function addAccount(e) {
     e.preventDefault()
-    try { await api.post('/finance/bank/accounts', accForm); toast.success('Account added'); setShowAccForm(false); loadAccounts() }
-    catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    try { await addBankAccount(accForm); toast.success('Account added'); setShowAccForm(false); loadAccounts() }
+    catch (err) { toast.error(err.message || 'Failed') }
   }
 
   async function addTxn(e) {
     e.preventDefault()
-    const amt = txnForm.transaction_type==='withdrawal'||txnForm.transaction_type==='payment' ? -Math.abs(Number(txnForm.amount)) : Math.abs(Number(txnForm.amount))
-    try { await api.post(`/finance/bank/${selected}/transactions`, { ...txnForm, amount: amt }); toast.success('Transaction added'); setShowTxnForm(false); loadTxns() }
-    catch (err) { toast.error(err.response?.data?.error || 'Failed') }
+    const isOut = txnForm.transaction_type === 'withdrawal' || txnForm.transaction_type === 'payment'
+    try { await addBankTransactionFixed(selected, { ...txnForm, is_inflow: !isOut, amount: Number(txnForm.amount) }, user?.uid); toast.success('Transaction added'); setShowTxnForm(false); loadTxns(); loadAccounts() }
+    catch (err) { toast.error(err.message || 'Failed') }
   }
 
   const selectedAccount = accounts.find(a=>a.id===selected)
