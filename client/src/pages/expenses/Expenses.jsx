@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { getExpenseCategories, getExpenses, createExpense } from '../../services/db'
+import { getExpenseCategories, getExpenses, createExpense, deleteExpense } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
@@ -75,7 +75,7 @@ export default function Expenses() {
             : expenses.length === 0
               ? <div className="empty-state"><div className="empty-state-icon">💸</div><h3>No expenses found</h3></div>
               : <div className="table-container"><table className="table">
-                <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Payment</th><th>Vendor / Person</th><th style={{textAlign:'right'}}>Amount</th></tr></thead>
+                <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Payment</th><th>Vendor / Person</th><th style={{textAlign:'right'}}>Amount</th><th></th></tr></thead>
                 <tbody>{expenses.map(e=>(
                   <tr key={e.id}>
                     <td style={{fontSize:12,color:'var(--text-muted)'}}>{e.expense_date}</td>
@@ -84,6 +84,7 @@ export default function Expenses() {
                     <td><span className="badge badge-info">{(e.payment_mode||'').toUpperCase()}</span></td>
                     <td style={{fontSize:12,color:'var(--text-muted)'}}>{e.vendor_person||'—'}</td>
                     <td style={{textAlign:'right',fontWeight:700,color:'var(--danger)'}}>{fmt(e.amount)}</td>
+                    <td><button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm('Delete this expense?'))return;try{await deleteExpense(e.id);toast.success('Deleted');load()}catch(err){toast.error(err.message)}}}>🗑️</button></td>
                   </tr>
                 ))}</tbody>
               </table></div>

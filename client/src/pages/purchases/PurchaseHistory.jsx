@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { getVendors, getPurchases, getPurchase, recordPurchasePayment } from '../../services/db'
+import { getVendors, getPurchases, getPurchase, recordPurchasePayment, deletePurchase } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
@@ -96,6 +96,7 @@ export default function PurchaseHistory() {
                     <td style={{display:'flex',gap:4}}>
                       <button className="btn btn-sm btn-ghost" onClick={()=>loadDetail(p.id)}>👁</button>
                       {p.outstanding_amount>0 && <button className="btn btn-sm btn-warning" onClick={()=>{ setPayModal(p); setPayForm({amount:p.outstanding_amount.toFixed(2),payment_mode:'cash',payment_date:new Date().toISOString().split('T')[0]}) }}>💳 Pay</button>}
+                      <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm(`Delete purchase ${p.purchase_number}? Stock will be reversed.`))return;try{await deletePurchase(p.id);toast.success('Purchase deleted');load()}catch(e){toast.error(e.message)}}}>🗑️</button>
                     </td>
                   </tr>
                 ))}</tbody>

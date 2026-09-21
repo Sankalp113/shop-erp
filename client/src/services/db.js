@@ -24,12 +24,18 @@ const usernameToEmail = (u) => `${u.toLowerCase().trim()}@shopapp.internal`
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 
-export async function signIn(username, password) {
-  const email = usernameToEmail(username)
+export async function signIn(usernameOrEmail, password) {
+  // Accept both plain username (admin) OR full email (sankalpbhatiya@gmail.com)
+  const email = usernameOrEmail.includes('@') ? usernameOrEmail : usernameToEmail(usernameOrEmail)
   const cred = await signInWithEmailAndPassword(auth, email, password)
   // Load user profile from Firestore
   const profileSnap = await getDoc(doc(firestore, 'users', cred.user.uid))
-  if (!profileSnap.exists()) throw new Error('User profile not found')
+  if (!profileSnap.exists()) {
+    // Auto-create owner profile for first-time real-email users
+    const profile = { username: usernameOrEmail.split('@')[0].toLowerCase(), full_name: usernameOrEmail.split('@')[0], email: usernameOrEmail.includes('@') ? usernameOrEmail : '', mobile: '', role: 'owner', is_active: true, created_at: now() }
+    await setDoc(doc(firestore, 'users', cred.user.uid), profile)
+    return { uid: cred.user.uid, ...profile }
+  }
   const profile = profileSnap.data()
   if (!profile.is_active) throw new Error('Account is deactivated')
   return { uid: cred.user.uid, ...profile }
@@ -42,8 +48,18 @@ export async function signOut() {
 export function onAuthChange(callback) {
   return fbOnAuthChanged(auth, async (firebaseUser) => {
     if (!firebaseUser) { callback(null); return }
-    const snap = await getDoc(doc(firestore, 'users', firebaseUser.uid))
-    callback(snap.exists() ? { uid: firebaseUser.uid, ...snap.data() } : null)
+    const userRef = doc(firestore, 'users', firebaseUser.uid)
+    const snap = await getDoc(userRef)
+    if (snap.exists()) {
+      callback({ uid: firebaseUser.uid, ...snap.data() })
+    } else {
+      // Auto-create Firestore profile for real-email users (e.g. sankalpbhatiya@gmail.com)
+      const email = firebaseUser.email || ''
+      const username = email.split('@')[0].toLowerCase()
+      const profile = { username, full_name: username, email, mobile: '', role: 'owner', is_active: true, created_at: now() }
+      await setDoc(userRef, profile)
+      callback({ uid: firebaseUser.uid, ...profile })
+    }
   })
 }
 
@@ -1311,3 +1327,133 @@ export async function getReport(type, params = {}) {
   return null
 }
 
+// ─── DELETE FUNCTIONS (full CRUD for every module) ────────────────────────────
+
+// Customers
+export async function deleteCustomer(id) {
+  await deleteDoc(doc(firestore, 'customers', id))
+}
+
+// Vendors
+export async function deleteVendor(id) {
+  await deleteDoc(doc(firestore, 'vendors', id))
+}
+
+// Products (hard delete only — soft delete already exists above)
+export async function hardDeleteProduct(id) {
+  await deleteDoc(doc(firestore, 'products', id))
+}
+
+// Sales — delete sale and restore stock
+export async function deleteSale(saleId) {
+  const saleSnap = await getDoc(doc(firestore, 'sales', saleId))
+  if (!saleSnap.exists()) throw new Error('Sale not found')
+  const sale = saleSnap.data()
+
+  // Restore stock for each item
+  const itemsSnap = await getDocs(query(collection(firestore, 'saleItems'), where('sale_id', '==', saleId)))
+  const batch = writeBatch(firestore)
+  itemsSnap.docs.forEach(itemDoc => {
+    const item = itemDoc.data()
+    if (item.product_id) {
+      batch.update(doc(firestore, 'products', item.product_id), { total_stock: increment(item.quantity) })
+    }
+    batch.delete(itemDoc.ref)
+  })
+
+  batch.delete(doc(firestore, 'sales', saleId))
+  await batch.commit()
+}
+
+// Purchases — delete purchase
+export async function deletePurchase(id) {
+  const snap = await getDoc(doc(firestore, 'purchases', id))
+  if (!snap.exists()) return
+  const purchase = snap.data()
+
+  // Reverse stock additions
+  const itemsSnap = await getDocs(query(collection(firestore, 'purchaseItems'), where('purchase_id', '==', id)))
+  const batch = writeBatch(firestore)
+  itemsSnap.docs.forEach(itemDoc => {
+    const item = itemDoc.data()
+    if (item.product_id) {
+      batch.update(doc(firestore, 'products', item.product_id), { total_stock: increment(-item.quantity) })
+    }
+    batch.delete(itemDoc.ref)
+  })
+  batch.delete(doc(firestore, 'purchases', id))
+  await batch.commit()
+}
+
+// Sale Returns — delete
+export async function deleteSaleReturn(id) {
+  await deleteDoc(doc(firestore, 'saleReturns', id))
+}
+
+// Electricity
+export async function deleteElectricityBill(id) {
+  await deleteDoc(doc(firestore, 'electricityBills', id))
+}
+export async function updateElectricityBill(id, data) {
+  await updateDoc(doc(firestore, 'electricityBills', id), { ...data, updated_at: now() })
+}
+
+// Rent
+export async function deleteRentRecord(id) {
+  await deleteDoc(doc(firestore, 'rentPayments', id))
+}
+export async function updateRentRecord(id, data) {
+  await updateDoc(doc(firestore, 'rentPayments', id), { ...data, updated_at: now() })
+}
+
+// Recurring Expenses
+export async function deleteRecurringExpense(id) {
+  await deleteDoc(doc(firestore, 'recurringExpenses', id))
+}
+export async function updateRecurringExpense(id, data) {
+  await updateDoc(doc(firestore, 'recurringExpenses', id), { ...data, updated_at: now() })
+}
+
+// Employees
+export async function deleteEmployee(id) {
+  await updateDoc(doc(firestore, 'employees', id), { is_active: false, deleted_at: now() })
+}
+export async function hardDeleteEmployee(id) {
+  await deleteDoc(doc(firestore, 'employees', id))
+}
+
+// Salary
+export async function deleteSalaryRecord(id) {
+  await deleteDoc(doc(firestore, 'salaries', id))
+}
+
+// Attendance
+export async function deleteAttendanceRecord(id) {
+  await deleteDoc(doc(firestore, 'attendance', id))
+}
+
+// Bank Accounts
+export async function deleteBankAccount(id) {
+  await updateDoc(doc(firestore, 'bankAccounts', id), { is_active: false, deleted_at: now() })
+}
+export async function deleteBankTransaction(id) {
+  await deleteDoc(doc(firestore, 'bankTransactions', id))
+}
+export async function updateBankAccount(id, data) {
+  await updateDoc(doc(firestore, 'bankAccounts', id), { ...data, updated_at: now() })
+}
+
+// Cash transactions
+export async function deleteCashTransaction(id) {
+  await deleteDoc(doc(firestore, 'cashTransactions', id))
+}
+
+// Stock adjustments
+export async function deleteStockAdjustment(id) {
+  await deleteDoc(doc(firestore, 'stockAdjustments', id))
+}
+
+// Users (Admin)
+export async function deleteUserAccount(uid) {
+  await updateDoc(doc(firestore, 'users', uid), { is_active: false, deleted_at: now() })
+}

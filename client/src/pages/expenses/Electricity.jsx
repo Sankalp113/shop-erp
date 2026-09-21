@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { getElectricityBills, addElectricityBill, payElectricityBillByMode } from '../../services/db'
+import { getElectricityBills, addElectricityBill, payElectricityBillByMode, deleteElectricityBill } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
@@ -49,7 +49,7 @@ export default function Electricity() {
                     <td style={{fontSize:12,color: new Date(b.due_date) < new Date() && b.status==='pending' ? 'var(--danger)':'var(--text-muted)'}}>{b.due_date}</td>
                     <td style={{textAlign:'right',fontWeight:700}}>{fmt(b.bill_amount)}</td>
                     <td><span className={`badge ${b.status==='paid'?'badge-success':'badge-danger'}`}>{b.status}</span></td>
-                    <td>{b.status==='pending' && <button className="btn btn-sm btn-success" onClick={()=>setPayModal(b)}>💳 Pay</button>}</td>
+                    <td><div style={{display:'flex',gap:4}}>{b.status==='pending' && <button className="btn btn-sm btn-success" onClick={()=>setPayModal(b)}>💳 Pay</button>}<button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm('Delete this bill?'))return;try{await deleteElectricityBill(b.id);toast.success('Deleted');load()}catch(e){toast.error(e.message)}}}>🗑️</button></div></td>
                   </tr>
                 ))}</tbody>
               </table></div>

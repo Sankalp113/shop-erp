@@ -92,7 +92,7 @@ export default function Salary() {
                     <td style={{textAlign:'right',color:'var(--danger)'}}>{s.deduction_amount>0?fmt(s.deduction_amount):'—'}</td>
                     <td style={{textAlign:'right',fontWeight:800,fontSize:15}}>{fmt(s.net_salary)}</td>
                     <td><span className={`badge ${s.status==='paid'?'badge-success':s.status==='partial'?'badge-warning':'badge-danger'}`}>{s.status}</span></td>
-                    <td>{s.status!=='paid' && <button className="btn btn-sm btn-success" onClick={()=>setPayModal(s)}>💳 Pay</button>}</td>
+                    <td><div style={{display:'flex',gap:4}}>{s.status!=='paid' && <button className="btn btn-sm btn-success" onClick={()=>setPayModal(s)}>💳 Pay</button>}<button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm(`Delete salary record for ${s.employee_name}?`))return;try{const {deleteSalaryRecord}=await import('../../services/db');await deleteSalaryRecord(s.id);toast.success('Deleted');load()}catch(e){toast.error(e.message)}}}>🗑️</button></div></td>
                   </tr>
                 ))}</tbody>
               </table></div>

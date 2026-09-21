@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { getCustomers, createCustomer } from '../../services/db'
+import { getCustomers, createCustomer, deleteCustomer } from '../../services/db'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
@@ -20,6 +20,12 @@ export default function CustomerList() {
     setCustomers(r.data); setLoading(false)
   }
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
+
+  async function handleDelete(c) {
+    if (!window.confirm(`Delete customer "${c.name}"? This cannot be undone.`)) return
+    try { await deleteCustomer(c.id); toast.success('Customer deleted'); load() }
+    catch (err) { toast.error(err.message || 'Failed to delete') }
+  }
 
   async function submit(e) {
     e.preventDefault()
@@ -56,7 +62,7 @@ export default function CustomerList() {
                     <td style={{textAlign:'right'}}>{fmt(c.total_purchased)}</td>
                     <td style={{textAlign:'right',color:c.total_outstanding>0?'var(--warning)':'var(--text-muted)',fontWeight:c.total_outstanding>0?700:400}}>{fmt(c.total_outstanding)}</td>
                     <td style={{textAlign:'right',fontSize:12}}>{c.credit_limit>0?fmt(c.credit_limit):'—'}</td>
-                    <td><button className="btn btn-sm btn-secondary" onClick={()=>navigate(`/customers/${c.id}`)}>View →</button></td>
+                     <td><div style={{display:'flex',gap:6}}><button className="btn btn-sm btn-secondary" onClick={()=>navigate(`/customers/${c.id}`)}>View →</button><button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={()=>handleDelete(c)}>🗑️</button></div></td>
                   </tr>
                 ))}</tbody>
               </table></div>

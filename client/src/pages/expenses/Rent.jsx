@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { getRentRecords, addRentRecord, payRentByMode } from '../../services/db'
+import { getRentRecords, addRentRecord, payRentByMode, deleteRentRecord } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
@@ -56,12 +56,7 @@ export default function Rent() {
                     <td style={{textAlign:'right',fontWeight:700}}>{fmt(r.amount)}</td>
                     <td><span className={`badge ${r.status==='paid'?'badge-success':'badge-danger'}`}>{r.status}</span></td>
                     <td style={{fontSize:12,color:'var(--text-muted)'}}>{r.payment_date||'—'}</td>
-                    <td>{r.status==='pending' && (
-                      <div style={{display:'flex',gap:4}}>
-                        <button className="btn btn-sm btn-success" onClick={()=>pay(r.id,'cash')}>Cash</button>
-                        <button className="btn btn-sm btn-secondary" onClick={()=>pay(r.id,'upi')}>UPI</button>
-                      </div>
-                    )}</td>
+                    <td><div style={{display:'flex',gap:4}}>{r.status==='pending' && (<><button className="btn btn-sm btn-success" onClick={()=>pay(r.id,'cash')}>Cash</button><button className="btn btn-sm btn-secondary" onClick={()=>pay(r.id,'upi')}>UPI</button></>)}<button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm('Delete this rent record?'))return;try{await deleteRentRecord(r.id);toast.success('Deleted');load()}catch(e){toast.error(e.message)}}}>🗑️</button></div></td>
                   </tr>
                 ))}</tbody>
               </table></div>

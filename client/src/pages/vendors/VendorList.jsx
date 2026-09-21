@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { getVendors, createVendor } from '../../services/db'
+import { getVendors, createVendor, deleteVendor } from '../../services/db'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
@@ -20,6 +20,12 @@ export default function VendorList() {
     setVendors(r.data); setLoading(false)
   }
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
+
+  async function handleDelete(v) {
+    if (!window.confirm(`Delete vendor "${v.name}"? This cannot be undone.`)) return
+    try { await deleteVendor(v.id); toast.success('Vendor deleted'); load() }
+    catch (err) { toast.error(err.message || 'Failed to delete') }
+  }
 
   async function submit(e) {
     e.preventDefault()
@@ -56,7 +62,7 @@ export default function VendorList() {
                     <td style={{fontSize:12}}>{v.city||'—'}</td>
                     <td style={{textAlign:'right'}}>{fmt(v.total_purchased)}</td>
                     <td style={{textAlign:'right',color:v.total_outstanding>0?'var(--danger)':'var(--text-muted)',fontWeight:v.total_outstanding>0?700:400}}>{fmt(v.total_outstanding)}</td>
-                    <td><button className="btn btn-sm btn-secondary" onClick={()=>navigate(`/vendors/${v.id}`)}>View →</button></td>
+                    <td><div style={{display:'flex',gap:6}}><button className="btn btn-sm btn-secondary" onClick={()=>navigate(`/vendors/${v.id}`)}>View →</button><button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={()=>handleDelete(v)}>🗑️</button></div></td>
                   </tr>
                 ))}</tbody>
               </table></div>

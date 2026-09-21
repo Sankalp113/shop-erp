@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { getSales, getSale, cancelSale as dbCancelSale } from '../../services/db'
+import { getSales, getSale, cancelSale as dbCancelSale, deleteSale } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`
@@ -138,7 +138,10 @@ export default function SalesHistory() {
                           <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(s.total_amount)}</td>
                           <td>{statusBadge(s.status)}</td>
                           <td>
-                            <button className="btn btn-sm btn-ghost" onClick={() => loadDetail(s.id)}>👁 View</button>
+                            <div style={{display:'flex',gap:4}}>
+                              <button className="btn btn-sm btn-ghost" onClick={() => loadDetail(s.id)}>👁 View</button>
+                              <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm(`Delete invoice ${s.invoice_number}? Stock will be restored.`))return;try{await deleteSale(s.id);toast.success('Sale deleted');load()}catch(e){toast.error(e.message)}}}>🗑️</button>
+                            </div>
                           </td>
                         </tr>
                       ))}

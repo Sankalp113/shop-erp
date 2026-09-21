@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { getEmployees, createEmployee, updateEmployee } from '../../services/db'
+import { getEmployees, createEmployee, updateEmployee, hardDeleteEmployee } from '../../services/db'
 
 export default function Employees() {
   const [employees, setEmployees] = useState([])
@@ -52,7 +52,7 @@ export default function Employees() {
                     <td style={{textAlign:'right',fontWeight:700}}>₹{Number(e.basic_salary).toLocaleString('en-IN')}</td>
                     <td style={{fontSize:12,color:'var(--text-muted)'}}>{e.joining_date}</td>
                     <td><span className={`badge ${e.status!=='inactive'?'badge-success':'badge-muted'}`}>{e.status!=='inactive'?'Active':'Inactive'}</span></td>
-                    <td><button className="btn btn-sm btn-secondary" onClick={() => openEdit(e)}>✏️</button></td>
+                    <td><div style={{display:'flex',gap:4}}><button className="btn btn-sm btn-secondary" onClick={() => openEdit(e)}>✏️</button><button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm(`Delete employee "${e.name}"?`))return;try{await hardDeleteEmployee(e.id);toast.success('Employee deleted');load()}catch(err){toast.error(err.message)}}}>🗑️</button></div></td>
                   </tr>
                 ))}</tbody>
               </table></div>
