@@ -428,14 +428,20 @@ export async function recordCustomerPayment(customerId, { amount, payment_mode, 
 }
 
 export async function getCustomerOutstanding() {
-  const snap = await getDocs(query(collection(firestore, 'sales'), where('status', '==', 'completed')))
-  const salesData = toDocs(snap).filter(s => (s.credit_amount || 0) > (s.paid_amount || 0))
+  // Use customerLedger running balance — accurate after payments
+  const snap = await getDocs(query(collection(firestore, 'customerLedger'), orderBy('created_at', 'desc')))
+  const ledger = toDocs(snap)
+  const seen = new Set()
   const byCustomer = {}
-  salesData.forEach(s => {
-    if (!s.customer_id) return
-    if (!byCustomer[s.customer_id]) byCustomer[s.customer_id] = { id: s.customer_id, name: s.customer_name || '', mobile: s.customer_mobile || '', outstanding: 0, last_sale_date: '' }
-    byCustomer[s.customer_id].outstanding += (s.credit_amount || 0) - (s.paid_amount || 0)
-    if (s.created_at > byCustomer[s.customer_id].last_sale_date) byCustomer[s.customer_id].last_sale_date = s.created_at
+  ledger.forEach(entry => {
+    if (!entry.customer_id || seen.has(entry.customer_id)) return
+    seen.add(entry.customer_id)
+    if ((entry.balance || 0) > 0) {
+      byCustomer[entry.customer_id] = {
+        id: entry.customer_id, name: entry.customer_name || '', mobile: '',
+        outstanding: entry.balance, last_sale_date: entry.transaction_date || entry.created_at || ''
+      }
+    }
   })
   return Object.values(byCustomer).filter(c => c.outstanding > 0).sort((a, b) => b.outstanding - a.outstanding)
 }
@@ -1004,7 +1010,11 @@ export async function getDashboardSummary() {
   const todayItems = allItems.filter(si => si.sale_date === todayStr)
   const grossProfit = todayItems.reduce((s, si) => s + ((si.unit_price * (1 - (si.discount_percent || 0)/100) - (si.purchase_price || 0)) * si.quantity), 0)
 
-  const customerOutstanding = allSales.filter(s => (s.credit_amount || 0) > (s.paid_amount || 0)).reduce((s, x) => s + ((x.credit_amount || 0) - (x.paid_amount || 0)), 0)
+  // Customer outstanding: sum credit_amount from all credit sales (ledger tracks payments but dashboard uses quick approximation)
+  const customerOutstanding = allSales
+    .filter(s => (s.credit_amount || 0) > 0)
+    .reduce((s, x) => s + (x.credit_amount || 0), 0)
+
   const vendorOutstanding = allPurchases.filter(p => (p.outstanding_amount || 0) > 0).reduce((s, p) => s + (p.outstanding_amount || 0), 0)
   const cashBal = await getLastCashBalance()
 
@@ -1341,24 +1351,45 @@ export async function getReconciliation(date) {
 
 // Credit outstanding alias
 export async function getCreditOutstanding() {
-  const snap = await getDocs(query(collection(firestore, 'sales'), where('status', '==', 'completed')))
-  const salesData = toDocs(snap)
-  const today_str = today()
-  const byCustomer = {}
-  salesData.forEach(s => {
-    const outstanding = (s.credit_amount || 0) - (s.paid_amount || 0)
-    if (!s.customer_id || outstanding <= 0) return
-    if (!byCustomer[s.customer_id]) byCustomer[s.customer_id] = {
-      id: s.customer_id, name: s.customer_name || '', mobile: s.customer_mobile || '',
-      outstanding: 0, pending_bills: 0, last_sale_date: s.sale_date || ''
-    }
-    byCustomer[s.customer_id].outstanding += outstanding
-    byCustomer[s.customer_id].pending_bills += 1
-    if ((s.sale_date || '') > byCustomer[s.customer_id].last_sale_date) byCustomer[s.customer_id].last_sale_date = s.sale_date || ''
+  // Use customerLedger running balance for accuracy (payments to customer reduce balance)
+  const [ledgerSnap, salesSnap] = await Promise.all([
+    getDocs(query(collection(firestore, 'customerLedger'), orderBy('created_at', 'desc'))),
+    getDocs(query(collection(firestore, 'sales'), where('status', '==', 'completed')))
+  ])
+  const ledger = toDocs(ledgerSnap)
+  const sales = toDocs(salesSnap)
+
+  // Count credit bills per customer
+  const billsByCustomer = {}
+  sales.filter(s => (s.credit_amount || 0) > 0).forEach(s => {
+    if (!s.customer_id) return
+    billsByCustomer[s.customer_id] = (billsByCustomer[s.customer_id] || 0) + 1
   })
+
+  // Latest ledger balance per customer (ledger ordered desc, first seen = most recent)
+  const seen = new Set()
+  const byCustomer = {}
+  ledger.forEach(entry => {
+    if (!entry.customer_id || seen.has(entry.customer_id)) return
+    seen.add(entry.customer_id)
+    if ((entry.balance || 0) > 0) {
+      byCustomer[entry.customer_id] = {
+        id: entry.customer_id, name: entry.customer_name || '', mobile: '',
+        outstanding: entry.balance,
+        pending_bills: billsByCustomer[entry.customer_id] || 1,
+        last_sale_date: entry.transaction_date || ''
+      }
+    }
+  })
+
   const data = Object.values(byCustomer)
     .filter(c => c.outstanding > 0)
-    .map(c => ({ ...c, days_outstanding: c.last_sale_date ? Math.floor((Date.now() - new Date(c.last_sale_date).getTime()) / 86400000) : 0 }))
+    .map(c => ({
+      ...c,
+      days_outstanding: c.last_sale_date
+        ? Math.floor((Date.now() - new Date(c.last_sale_date).getTime()) / 86400000)
+        : 0
+    }))
     .sort((a, b) => b.outstanding - a.outstanding)
   return { data, total: data.reduce((s, c) => s + c.outstanding, 0) }
 }

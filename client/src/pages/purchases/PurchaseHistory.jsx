@@ -101,14 +101,16 @@ export default function PurchaseHistory() {
   function removeEditItem(idx) { setEditItems(prev => prev.filter((_, i) => i !== idx)) }
   function setEditItemField(idx, k, v) { setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, [k]: Number(v) || v } : it)) }
 
-  const calcItemTotal = it => {
-    const gross = it.unit_price * it.quantity
-    const disc = gross * (it.discount_percent || 0) / 100
-    const net = gross - disc
-    return net + net * (it.tax_percent || 0) / 100
-  }
-  const editSubtotal = editItems.reduce((s, it) => s + calcItemTotal(it), 0)
-  const editGrandTotal = editSubtotal - Number(editForm.discount_amount || 0)
+  const calcItemGross = it => it.unit_price * it.quantity
+  const calcItemDisc  = it => calcItemGross(it) * (it.discount_percent || 0) / 100
+  const calcItemNet   = it => calcItemGross(it) - calcItemDisc(it)
+  const calcItemTax   = it => calcItemNet(it) * (it.tax_percent || 0) / 100
+  const calcItemTotal = it => calcItemNet(it) + calcItemTax(it)
+
+  const editSubtotal      = editItems.reduce((s, it) => s + calcItemGross(it), 0)
+  const editItemDiscTotal = editItems.reduce((s, it) => s + calcItemDisc(it), 0)
+  const editTaxTotal      = editItems.reduce((s, it) => s + calcItemTax(it), 0)
+  const editGrandTotal    = editSubtotal - editItemDiscTotal - Number(editForm.discount_amount || 0) + editTaxTotal
 
   async function submitEdit(e) {
     e.preventDefault()
@@ -323,7 +325,8 @@ export default function PurchaseHistory() {
                         <td><input type="number" value={it.unit_price} min="0" step="0.01" onChange={e=>setEditItemField(idx,'unit_price',e.target.value)} style={{width:90,background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 8px',color:'var(--text-primary)',textAlign:'right'}}/></td>
                         <td><input type="number" value={it.discount_percent} min="0" max="100" onChange={e=>setEditItemField(idx,'discount_percent',e.target.value)} style={{width:60,background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 8px',color:'var(--text-primary)',textAlign:'right'}}/></td>
                         <td><input type="number" value={it.tax_percent} min="0" max="100" onChange={e=>setEditItemField(idx,'tax_percent',e.target.value)} style={{width:60,background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 8px',color:'var(--text-primary)',textAlign:'right'}}/></td>
-                        <td style={{textAlign:'right',fontWeight:700}}>{fmt(calcItemTotal(it))}</td>
+                        <td style={{textAlign:'right',fontWeight:700}}>{fmt(calcItemGross(it))}</td>
+
                         <td><button type="button" className="btn btn-danger btn-sm btn-icon" onClick={()=>removeEditItem(idx)}>✕</button></td>
                       </tr>
                     ))}</tbody>
@@ -334,7 +337,9 @@ export default function PurchaseHistory() {
                 {editItems.length > 0 && (
                   <div style={{marginTop:16,padding:'12px 16px',background:'rgba(124,58,237,0.08)',borderRadius:8,display:'flex',gap:24,fontSize:13,flexWrap:'wrap'}}>
                     <span>Subtotal: <strong>{fmt(editSubtotal)}</strong></span>
-                    <span>Discount: <strong style={{color:'var(--warning)'}}>-{fmt(editForm.discount_amount||0)}</strong></span>
+                    {editItemDiscTotal > 0 && <span style={{color:'var(--warning)'}}>Item Disc: <strong>-{fmt(editItemDiscTotal)}</strong></span>}
+                    <span>Bill Discount: <strong style={{color:'var(--warning)'}}>-{fmt(editForm.discount_amount||0)}</strong></span>
+                    {editTaxTotal > 0 && <span>Tax (GST): <strong>+{fmt(editTaxTotal)}</strong></span>}
                     <span style={{fontSize:15,fontWeight:800}}>Grand Total: <strong style={{color:'var(--primary-light)'}}>{fmt(editGrandTotal)}</strong></span>
                     <span>Paid: <strong style={{color:'var(--success)'}}>{fmt(editForm.paid_amount||0)}</strong></span>
                     <span style={{color: editGrandTotal - (editForm.paid_amount||0) > 0 ? 'var(--danger)' : 'var(--success)'}}>
