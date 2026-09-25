@@ -65,6 +65,7 @@ const NAV = [
   { label: 'Documents', icon: '📁', path: '/documents' },
   {
     label: 'Admin', icon: '⚙️', children: [
+      { label: 'Categories', path: '/admin/categories', icon: '🗂️' },
       { label: 'Users & Roles', path: '/admin/users', icon: '👤' },
       { label: 'Audit Log', path: '/admin/audit', icon: '🔍' },
       { label: 'Settings', path: '/admin/settings', icon: '⚙️' },

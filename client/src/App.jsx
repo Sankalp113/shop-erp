@@ -38,6 +38,8 @@ import Documents from './pages/Documents'
 import UsersPage from './pages/admin/UsersPage'
 import AuditLog from './pages/admin/AuditLog'
 import Settings from './pages/admin/Settings'
+import CategoriesPage from './pages/admin/CategoriesPage'
+
 
 function PrivateRoute({ children }) {
   const { user } = useAuth()
@@ -84,6 +86,8 @@ function AppRoutes() {
         <Route path="admin/users" element={<UsersPage />} />
         <Route path="admin/audit" element={<AuditLog />} />
         <Route path="admin/settings" element={<Settings />} />
+        <Route path="admin/categories" element={<CategoriesPage />} />
+
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

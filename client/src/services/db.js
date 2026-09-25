@@ -158,12 +158,17 @@ export async function updateSettings(data) {
 
 // ─── PRODUCTS ────────────────────────────────────────────────────────────────
 
-export async function getProducts({ search = '', category_id = '', is_active = true, limit: lim = 100 } = {}) {
+export async function getProducts({ search = '', category_id = '', category_ids = null, is_active = true, limit: lim = 100 } = {}) {
   let q = query(collection(firestore, 'products'), where('is_active', '==', is_active !== false && is_active !== '0'))
   const snap = await getDocs(q)
   let data = toDocs(snap)
   if (search) { const s = search.toLowerCase(); data = data.filter(p => p.name?.toLowerCase().includes(s) || p.product_code?.toLowerCase().includes(s) || p.sku?.toLowerCase().includes(s)) }
-  if (category_id) data = data.filter(p => p.category_id === category_id)
+  // category_ids array takes priority (used when filtering by parent to include all subcategories)
+  if (category_ids && category_ids.length > 0) {
+    data = data.filter(p => category_ids.includes(p.category_id))
+  } else if (category_id) {
+    data = data.filter(p => p.category_id === category_id)
+  }
   data.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
   return { data: data.slice(0, lim), total: data.length }
 }
@@ -205,6 +210,41 @@ export async function getCategories() {
   return toDocs(snap)
 }
 
+// Returns { parents: [...], children: { parentId: [...] }, allIds: Set }
+export async function getCategoriesTree() {
+  const all = await getCategories()
+  const parents = all.filter(c => !c.parent_id)
+  const children = {}
+  all.filter(c => c.parent_id).forEach(c => {
+    if (!children[c.parent_id]) children[c.parent_id] = []
+    children[c.parent_id].push(c)
+  })
+  return { parents, children, all }
+}
+
+export async function createCategory({ name, parent_id, description }) {
+  const ref = await addDoc(collection(firestore, 'categories'), {
+    name: name.trim(), parent_id: parent_id || null,
+    description: description || '', is_active: true, created_at: now()
+  })
+  return { id: ref.id, name }
+}
+
+export async function updateCategory(id, { name, description }) {
+  await updateDoc(doc(firestore, 'categories', id), {
+    name: name.trim(), description: description || '', updated_at: now()
+  })
+}
+
+export async function deleteCategory(id) {
+  // Soft delete — also deactivate all children
+  const batch = writeBatch(firestore)
+  batch.update(doc(firestore, 'categories', id), { is_active: false, updated_at: now() })
+  const childSnap = await getDocs(query(collection(firestore, 'categories'), where('parent_id', '==', id)))
+  childSnap.docs.forEach(d => batch.update(d.ref, { is_active: false, updated_at: now() }))
+  await batch.commit()
+}
+
 export async function getBrands() {
   const snap = await getDocs(query(collection(firestore, 'brands'), where('is_active', '==', true), orderBy('name')))
   return toDocs(snap)
@@ -220,10 +260,6 @@ export async function getColors() {
   return toDocs(snap)
 }
 
-export async function createCategory({ name, parent_id, description }) {
-  const ref = await addDoc(collection(firestore, 'categories'), { name, parent_id: parent_id || null, description: description || '', is_active: true, created_at: now() })
-  return { id: ref.id, name }
-}
 
 export async function createBrand({ name, description }) {
   const ref = await addDoc(collection(firestore, 'brands'), { name, description: description || '', is_active: true, created_at: now() })
@@ -237,8 +273,8 @@ export async function getFabrics() {
 
 // ─── STOCK ───────────────────────────────────────────────────────────────────
 
-export async function getStock({ search = '', category_id = '', low_stock = false } = {}) {
-  const { data } = await getProducts({ search, category_id, is_active: true, limit: 500 })
+export async function getStock({ search = '', category_id = '', category_ids = null, low_stock = false } = {}) {
+  const { data } = await getProducts({ search, category_id, category_ids, is_active: true, limit: 500 })
   let filtered = data
   if (low_stock) filtered = filtered.filter(p => (p.total_stock || 0) <= (p.min_stock_level || 5))
   return { data: filtered, total: filtered.length }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getCategories, getProducts, deleteProduct } from '../../services/db'
+import { getCategoriesTree, getProducts, deleteProduct } from '../../services/db'
+
 import toast from 'react-hot-toast'
 
 export default function Products() {
@@ -9,16 +10,23 @@ export default function Products() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [catId, setCatId] = useState('')
-  const [categories, setCategories] = useState([])
+  const [catTree, setCatTree] = useState({ parents: [], children: {}, all: [] })
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
 
-  useEffect(() => { getCategories().then(setCategories) }, [])
+  useEffect(() => { getCategoriesTree().then(setCatTree) }, [])
   useEffect(() => { load() }, [search, catId, page])
 
   async function load() {
     setLoading(true)
-    const r = await getProducts({ search, category_id: catId, limit: 50 })
+    // If catId is a parent category, include all its subcategory products too
+    const catIds = (() => {
+      if (!catId) return null
+      const subs = catTree.children[catId]
+      if (subs && subs.length > 0) return [catId, ...subs.map(s => s.id)]
+      return null
+    })()
+    const r = await getProducts({ search, category_id: catIds ? '' : catId, category_ids: catIds, limit: 50 })
     setProducts(r.data); setTotal(r.total); setLoading(false)
   }
 
@@ -30,9 +38,22 @@ export default function Products() {
       </div>
       <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
         <input className="form-control" placeholder="🔍 Search products..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ flex: 1 }} />
-        <select className="form-control" value={catId} onChange={e => { setCatId(e.target.value); setPage(1) }} style={{ width: 180 }}>
+        <select className="form-control" value={catId} onChange={e => { setCatId(e.target.value); setPage(1) }} style={{ width: 200 }}>
           <option value="">All Categories</option>
-          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {catTree.parents.map(parent => {
+            const subs = catTree.children[parent.id] || []
+            return subs.length > 0 ? (
+              <optgroup key={parent.id} label={`📁 ${parent.name}`}>
+                <option value={parent.id}>{parent.name} (All)</option>
+                {subs.map(s => <option key={s.id} value={s.id}>&nbsp;&nbsp;└ {s.name}</option>)}
+              </optgroup>
+            ) : (
+              <option key={parent.id} value={parent.id}>📁 {parent.name}</option>
+            )
+          })}
+          {catTree.all?.filter(c => c.parent_id && !catTree.parents.find(p => p.id === c.parent_id)).map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
         </select>
       </div>
       <div className="card">

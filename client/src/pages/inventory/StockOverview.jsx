@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { getCategories, getStock, getStockTransactions } from '../../services/db'
+import { getCategories, getStock, getStockTransactions, getCategoriesTree } from '../../services/db'
+
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
@@ -16,19 +17,26 @@ export default function StockOverview() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [catId, setCatId] = useState('')
-  const [categories, setCategories] = useState([])
+  const [catTree, setCatTree] = useState({ parents: [], children: {}, all: [] })
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [historyModal, setHistoryModal] = useState(null)
   const [historyData, setHistoryData] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
 
-  useEffect(() => { getCategories().then(setCategories) }, [])
+  useEffect(() => { getCategoriesTree().then(setCatTree) }, [])
   useEffect(() => { load() }, [search, catId, page])
 
   async function load() {
     setLoading(true)
-    const r = await getStock({ search, category_id: catId })
+    // When parent selected, include all subcategory products
+    const catIds = (() => {
+      if (!catId) return null
+      const subs = catTree.children[catId]
+      if (subs && subs.length > 0) return [catId, ...subs.map(s => s.id)]
+      return null
+    })()
+    const r = await getStock({ search, category_id: catIds ? '' : catId, category_ids: catIds })
     setStock(r.data); setTotal(r.total); setLoading(false)
   }
 
@@ -69,9 +77,22 @@ export default function StockOverview() {
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
         <input className="form-control" placeholder="🔍 Search products..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ flex: 1 }} />
-        <select className="form-control" value={catId} onChange={e => { setCatId(e.target.value); setPage(1) }} style={{ width: 180 }}>
+        <select className="form-control" value={catId} onChange={e => { setCatId(e.target.value); setPage(1) }} style={{ width: 200 }}>
           <option value="">All Categories</option>
-          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {catTree.parents.map(parent => {
+            const subs = catTree.children[parent.id] || []
+            return subs.length > 0 ? (
+              <optgroup key={parent.id} label={`📁 ${parent.name}`}>
+                <option value={parent.id}>{parent.name} (All)</option>
+                {subs.map(s => <option key={s.id} value={s.id}>&nbsp;&nbsp;└ {s.name}</option>)}
+              </optgroup>
+            ) : (
+              <option key={parent.id} value={parent.id}>📁 {parent.name}</option>
+            )
+          })}
+          {catTree.all?.filter(c => c.parent_id && !catTree.parents.find(p => p.id === c.parent_id)).map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
         </select>
       </div>
 

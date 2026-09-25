@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { getCategories, getBrands, getSizes, getColors, getProduct, createProduct, updateProduct } from '../../services/db'
+import { getCategoriesTree, getBrands, getSizes, getColors, getProduct, createProduct, updateProduct } from '../../services/db'
+
 
 export default function ProductForm() {
   const { id } = useParams()
   const navigate = useNavigate()
   const isEdit = Boolean(id)
-  const [categories, setCategories] = useState([])
+  const [catTree, setCatTree] = useState({ parents: [], children: {} })
+
   const [brands, setBrands] = useState([])
   const [sizes, setSizes] = useState([])
   const [colors, setColors] = useState([])
@@ -20,7 +22,8 @@ export default function ProductForm() {
   const [variants, setVariants] = useState([])
 
   useEffect(() => {
-    getCategories().then(setCategories)
+    getCategoriesTree().then(setCatTree)
+
     getBrands().then(setBrands)
     getSizes().then(setSizes)
     getColors().then(setColors)
@@ -82,9 +85,24 @@ export default function ProductForm() {
                   <label className="form-label">Category</label>
                   <select className="form-control" value={form.category_id} onChange={e => set('category_id', e.target.value)}>
                     <option value="">Select category</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {catTree.parents.map(parent => {
+                      const subs = catTree.children[parent.id] || []
+                      return subs.length > 0 ? (
+                        <optgroup key={parent.id} label={`📁 ${parent.name}`}>
+                          <option value={parent.id}>{parent.name} (All)</option>
+                          {subs.map(s => <option key={s.id} value={s.id}>&nbsp;&nbsp;└ {s.name}</option>)}
+                        </optgroup>
+                      ) : (
+                        <option key={parent.id} value={parent.id}>📁 {parent.name}</option>
+                      )
+                    })}
+                    {/* Sub-categories without a recognised parent */}
+                    {catTree.all?.filter(c => c.parent_id && !catTree.parents.find(p => p.id === c.parent_id)).map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
                   </select>
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">Brand</label>
                   <select className="form-control" value={form.brand_id} onChange={e => set('brand_id', e.target.value)}>
