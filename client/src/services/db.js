@@ -531,18 +531,20 @@ export async function createSale({ customer_id, customer_name, customer_mobile, 
   const invoice_number = await getNextInvoiceNumber()
   const saleDate = sale_date || today()
 
-  let subtotal = 0, tax_amount = 0
+  let subtotal = 0, item_discount_total = 0, tax_amount = 0
   const processedItems = items.map(item => {
-    const itemDisc = (item.unit_price * item.quantity) * (item.discount_percent || 0) / 100
-    const itemNet = (item.unit_price * item.quantity) - itemDisc
+    const gross = item.unit_price * item.quantity
+    const itemDisc = gross * (item.discount_percent || 0) / 100
+    const itemNet = gross - itemDisc
     const itemTax = itemNet * (item.tax_percent || 0) / 100
     const itemTotal = itemNet + itemTax
-    subtotal += item.unit_price * item.quantity
+    subtotal += gross
+    item_discount_total += itemDisc
     tax_amount += itemTax
     return { ...item, discount_amount: itemDisc, tax_amount: itemTax, total_price: itemTotal }
   })
 
-  const total_amount = subtotal - Number(discount_amount) + tax_amount
+  const total_amount = subtotal - item_discount_total - Number(discount_amount) + tax_amount
   const paid_amount = Number(cash_amount) + Number(upi_amount) + Number(card_amount)
 
   // Create sale
@@ -550,7 +552,8 @@ export async function createSale({ customer_id, customer_name, customer_mobile, 
     invoice_number, sale_date: saleDate,
     customer_id: customer_id || null, customer_name: customer_name || 'Walk-in Customer',
     customer_mobile: customer_mobile || null,
-    subtotal, discount_amount: Number(discount_amount), tax_amount, total_amount,
+    subtotal, item_discount_amount: item_discount_total, discount_amount: Number(discount_amount), tax_amount, total_amount,
+
     paid_amount, credit_amount: Number(credit_amount),
     payment_mode, cash_amount: Number(cash_amount), upi_amount: Number(upi_amount),
     card_amount: Number(card_amount), notes: notes || null,
@@ -653,23 +656,26 @@ export async function createPurchase({ vendor_id, vendor_name, vendor_invoice_nu
   const purchase_number = await getNextPurchaseNumber()
   const pDate = purchase_date || today()
 
-  let subtotal = 0, tax_amount = 0
+  let subtotal = 0, item_discount_total = 0, tax_amount = 0
   const processedItems = items.map(item => {
-    const itemDisc = (item.unit_price * item.quantity) * (item.discount_percent || 0) / 100
-    const itemNet = (item.unit_price * item.quantity) - itemDisc
+    const gross = item.unit_price * item.quantity
+    const itemDisc = gross * (item.discount_percent || 0) / 100
+    const itemNet = gross - itemDisc
     const itemTax = itemNet * (item.tax_percent || 0) / 100
-    subtotal += item.unit_price * item.quantity
+    subtotal += gross
+    item_discount_total += itemDisc
     tax_amount += itemTax
     return { ...item, discount_amount: itemDisc, tax_amount: itemTax, total_price: itemNet + itemTax }
   })
 
-  const total_amount = subtotal - Number(discount_amount) + tax_amount
+  const total_amount = subtotal - item_discount_total - Number(discount_amount) + tax_amount
   const outstanding_amount = total_amount - Number(paid_amount)
 
   const purchaseRef = await addDoc(collection(firestore, 'purchases'), {
     purchase_number, vendor_invoice_number: vendor_invoice_number || null,
     purchase_date: pDate, vendor_id: vendor_id || null, vendor_name: vendor_name || '',
-    subtotal, discount_amount: Number(discount_amount), tax_amount, total_amount,
+    subtotal, item_discount_amount: item_discount_total, discount_amount: Number(discount_amount), tax_amount, total_amount,
+
     paid_amount: Number(paid_amount), outstanding_amount,
     payment_mode: payment_mode || null, due_date: due_date || null, notes: notes || null,
     status: outstanding_amount <= 0 ? 'paid' : paid_amount > 0 ? 'partial' : 'pending',
@@ -727,17 +733,19 @@ export async function updatePurchase(id, { vendor_id, vendor_name, vendor_invoic
   }
 
   // 2. Recalculate totals with new items
-  let subtotal = 0, tax_amount = 0
+  let subtotal = 0, item_discount_total = 0, tax_amount = 0
   const processedItems = items.map(item => {
-    const itemDisc = (item.unit_price * item.quantity) * (item.discount_percent || 0) / 100
-    const itemNet = (item.unit_price * item.quantity) - itemDisc
+    const gross = item.unit_price * item.quantity
+    const itemDisc = gross * (item.discount_percent || 0) / 100
+    const itemNet = gross - itemDisc
     const itemTax = itemNet * (item.tax_percent || 0) / 100
-    subtotal += item.unit_price * item.quantity
+    subtotal += gross
+    item_discount_total += itemDisc
     tax_amount += itemTax
     return { ...item, discount_amount: itemDisc, tax_amount: itemTax, total_price: itemNet + itemTax }
   })
 
-  const total_amount = subtotal - Number(discount_amount) + tax_amount
+  const total_amount = subtotal - item_discount_total - Number(discount_amount) + tax_amount
   const outstanding_amount = total_amount - Number(paid_amount)
 
   // 3. Add new items and update stock
@@ -753,7 +761,8 @@ export async function updatePurchase(id, { vendor_id, vendor_name, vendor_invoic
     vendor_id: vendor_id || null, vendor_name: vendor_name || '',
     vendor_invoice_number: vendor_invoice_number || null,
     purchase_date: purchase_date || today(),
-    subtotal, discount_amount: Number(discount_amount), tax_amount, total_amount,
+    subtotal, item_discount_amount: item_discount_total, discount_amount: Number(discount_amount), tax_amount, total_amount,
+
     paid_amount: Number(paid_amount), outstanding_amount: Math.max(0, outstanding_amount),
     payment_mode: payment_mode || null, notes: notes || null,
     status: outstanding_amount <= 0 ? 'paid' : Number(paid_amount) > 0 ? 'partial' : 'pending',

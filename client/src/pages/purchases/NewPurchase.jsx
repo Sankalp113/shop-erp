@@ -33,10 +33,18 @@ export default function NewPurchase() {
   function removeItem(idx) { setItems(prev => prev.filter((_, i) => i !== idx)) }
   function setItemField(idx, k, v) { setItems(prev => prev.map((it, i) => i === idx ? { ...it, [k]: v } : it)) }
 
-  const itemTotals = items.map(it => { const gross = it.unit_price * it.quantity; const disc = gross * it.discount_percent / 100; const net = gross - disc; const tax = net * it.tax_percent / 100; return { total: net + tax } })
-  const subtotal = itemTotals.reduce((s, t) => s + t.total, 0)
-  const grandTotal = subtotal - Number(form.discount_amount)
-  const outstanding = grandTotal - Number(form.paid_amount)
+  const itemTotals = items.map(it => {
+    const gross = it.unit_price * it.quantity
+    const disc = gross * (it.discount_percent || 0) / 100
+    const net = gross - disc
+    const tax = net * (it.tax_percent || 0) / 100
+    return { gross, disc, net, tax, total: net + tax }
+  })
+  const subtotal      = itemTotals.reduce((s, t) => s + t.gross, 0)
+  const itemDiscTotal = itemTotals.reduce((s, t) => s + t.disc, 0)
+  const totalTax      = itemTotals.reduce((s, t) => s + t.tax, 0)
+  const grandTotal    = subtotal - itemDiscTotal - Number(form.discount_amount) + totalTax
+  const outstanding   = grandTotal - Number(form.paid_amount)
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
@@ -86,7 +94,8 @@ export default function NewPurchase() {
                         <td style={{ textAlign: 'center' }}><input type="number" value={item.quantity} min="1" onChange={e => setItemField(idx, 'quantity', Number(e.target.value))} style={{ width: 60, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', color: 'var(--text-primary)', textAlign: 'center' }} /></td>
                         <td style={{ textAlign: 'right' }}><input type="number" value={item.unit_price} min="0" step="0.01" onChange={e => setItemField(idx, 'unit_price', Number(e.target.value))} style={{ width: 90, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', color: 'var(--text-primary)', textAlign: 'right' }} /></td>
                         <td style={{ textAlign: 'right' }}><input type="number" value={item.discount_percent} min="0" max="100" onChange={e => setItemField(idx, 'discount_percent', Number(e.target.value))} style={{ width: 60, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', color: 'var(--text-primary)', textAlign: 'right' }} /></td>
-                        <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(itemTotals[idx]?.total)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(itemTotals[idx]?.gross)}</td>
+
                         <td><button type="button" className="btn btn-danger btn-sm btn-icon" onClick={() => removeItem(idx)}>✕</button></td>
                       </tr>
                     ))}</tbody>
@@ -120,9 +129,14 @@ export default function NewPurchase() {
               <div className="card-header"><span className="card-title">Payment</span></div>
               <div className="card-body">
                 <div className="pos-total-row"><span>Subtotal</span><span>{fmt(subtotal)}</span></div>
-                <div className="form-group"><label className="form-label">Discount</label>
+                {itemDiscTotal > 0 && (
+                  <div className="pos-total-row" style={{color:'var(--warning)'}}><span>Item Discounts</span><span>-{fmt(itemDiscTotal)}</span></div>
+                )}
+                <div className="form-group"><label className="form-label">Bill Discount (₹)</label>
                   <input type="number" className="form-control" value={form.discount_amount} onChange={e => set('discount_amount', e.target.value)} min="0" /></div>
+                {totalTax > 0 && <div className="pos-total-row"><span>Tax (GST)</span><span>+{fmt(totalTax)}</span></div>}
                 <div className="pos-total-final"><span>Total</span><span>{fmt(grandTotal)}</span></div>
+
                 <div className="form-group"><label className="form-label">Payment Mode</label>
                   <select className="form-control" value={form.payment_mode} onChange={e => set('payment_mode', e.target.value)}>
                     <option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card/Cheque</option><option value="bank">Bank Transfer</option>
