@@ -86,8 +86,9 @@ export default function NewSale() {
     const tax = net * item.tax_percent / 100
     return { gross, disc, net, tax, total: net + tax }
   })
-  const subtotal = itemTotals.reduce((s, t) => s + t.gross, 0)
-  const totalDisc = itemTotals.reduce((s, t) => s + t.disc, 0) + Number(billDiscount)
+  const subtotal = itemTotals.reduce((s, t) => s + t.gross, 0)          // sum of (price × qty)
+  const itemDiscTotal = itemTotals.reduce((s, t) => s + t.disc, 0)       // sum of item-level discounts
+  const totalDisc = itemDiscTotal + Number(billDiscount)                   // item discounts + bill discount
   const totalTax = itemTotals.reduce((s, t) => s + t.tax, 0)
   const grandTotal = subtotal - totalDisc + totalTax
   const totalPaid = Number(payments.cash) + Number(payments.upi) + Number(payments.card)
@@ -214,11 +215,22 @@ export default function NewSale() {
               <div key={idx} className="cart-item">
                 <div style={{ flex: 1 }}>
                   <div className="cart-item-name">{item.product_name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 8 }}>
-                    <span>{fmtRs(item.unit_price)}</span>
-                    <span>·</span>
-                    <input type="number" value={item.discount_percent} min="0" max="100" onChange={e => updateDiscount(idx, e.target.value)}
-                      style={{ width: 36, background: 'none', border: 'none', color: 'var(--warning)', fontSize: 11, padding: 0, outline: 'none', textAlign: 'center' }} />%off
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span>{fmtRs(item.unit_price)} × {item.quantity}</span>
+                    {item.discount_percent > 0 && (
+                      <>
+                        <span>·</span>
+                        <input type="number" value={item.discount_percent} min="0" max="100"
+                          onChange={e => updateDiscount(idx, e.target.value)}
+                          style={{ width: 36, background: 'none', border: 'none', color: 'var(--warning)', fontSize: 11, padding: 0, outline: 'none', textAlign: 'center' }} />%off
+                      </>
+                    )}
+                    {item.discount_percent === 0 && (
+                      <input type="number" value={item.discount_percent} min="0" max="100"
+                        onChange={e => updateDiscount(idx, e.target.value)}
+                        style={{ width: 36, background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 11, padding: 0, outline: 'none', textAlign: 'center' }}
+                        placeholder="0" />)}
+                    <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>%off</span>
                   </div>
                 </div>
                 <div className="cart-item-qty">
@@ -226,8 +238,12 @@ export default function NewSale() {
                   <span className="qty-display">{item.quantity}</span>
                   <button className="qty-btn" onClick={() => updateQty(idx, item.quantity + 1)}>+</button>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="cart-item-price">{fmtRs(itemTotals[idx]?.total)}</div>
+                <div style={{ textAlign: 'right', minWidth: 64 }}>
+                  {/* Show gross (price × qty) — discounts shown in footer */}
+                  <div className="cart-item-price">{fmtRs(itemTotals[idx]?.gross)}</div>
+                  {itemTotals[idx]?.disc > 0 && (
+                    <div style={{ fontSize: 10, color: 'var(--warning)' }}>-{fmtRs(itemTotals[idx].disc)}</div>
+                  )}
                   <button style={{ fontSize: 11, color: 'var(--danger)', marginTop: 2 }} onClick={() => removeFromCart(idx)}>✕</button>
                 </div>
               </div>
@@ -237,15 +253,21 @@ export default function NewSale() {
 
         <div className="pos-cart-footer">
           <div className="pos-total-row"><span>Subtotal</span><span>{fmtRs(subtotal)}</span></div>
+          {itemDiscTotal > 0 && (
+            <div className="pos-total-row" style={{ color: 'var(--warning)' }}>
+              <span>Item Discounts</span>
+              <span>-{fmtRs(itemDiscTotal)}</span>
+            </div>
+          )}
           <div className="pos-total-row">
             <span>Bill Discount</span>
             <input type="number" value={billDiscount} min="0" onChange={e => setBillDiscount(e.target.value)}
               style={{ width: 80, background: 'none', border: 'none', color: 'var(--warning)', fontWeight: 600, fontSize: 13, textAlign: 'right', outline: 'none' }}
               placeholder="0" />
           </div>
-          {totalTax > 0 && <div className="pos-total-row"><span>Tax</span><span>{fmtRs(totalTax)}</span></div>}
+          {totalTax > 0 && <div className="pos-total-row"><span>Tax (GST)</span><span>+{fmtRs(totalTax)}</span></div>}
           <div className="divider" />
-          <div className="pos-total-final"><span>Total</span><span style={{ color: 'var(--primary-light)' }}>{fmtRs(grandTotal)}</span></div>
+          <div className="pos-total-final"><span>TOTAL</span><span style={{ color: 'var(--primary-light)' }}>{fmtRs(grandTotal)}</span></div>
 
           <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
             {['cash', 'upi', 'card', 'credit', 'split'].map(m => (
