@@ -1084,6 +1084,10 @@ export async function updateReminderStatus(id, status) {
   await updateDoc(doc(firestore, 'reminders', id), { status, completed_at: status === 'completed' ? now() : null, updated_at: now() })
 }
 
+export async function updateReminder(id, data) {
+  await updateDoc(doc(firestore, 'reminders', id), { ...data, updated_at: now() })
+}
+
 export async function deleteReminder(id) { await deleteDoc(doc(firestore, 'reminders', id)) }
 
 // ─── DOCUMENTS ───────────────────────────────────────────────────────────────
@@ -1486,6 +1490,10 @@ export async function updateBankAccount(id, data) {
 // Cash transactions
 export async function deleteCashTransaction(id) {
   await deleteDoc(doc(firestore, 'cashTransactions', id))
+}
+
+export async function updateCashTransaction(id, data) {
+  await updateDoc(doc(firestore, 'cashTransactions', id), { ...data, updated_at: now() })
 }
 
 // Stock adjustments — reverses the stock change on delete

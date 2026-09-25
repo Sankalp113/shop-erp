@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { getReminders, createReminder, updateReminderStatus, deleteReminder } from '../services/db'
+import { getReminders, createReminder, updateReminderStatus, updateReminder, deleteReminder } from '../services/db'
+
 
 export default function Reminders() {
   const [reminders, setReminders] = useState([])
@@ -8,7 +9,9 @@ export default function Reminders() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
   const [showForm, setShowForm] = useState(false)
+  const [editItem, setEditItem] = useState(null)
   const [form, setForm] = useState({ reminder_type:'custom', title:'', description:'', due_date:'', amount:'', priority:'normal' })
+
 
   useEffect(() => { load() }, [filter])
 
@@ -38,10 +41,24 @@ export default function Reminders() {
 
   async function dismiss(id) { await updateReminderStatus(id, 'dismissed'); toast('Dismissed'); load() }
 
+  function openAdd() { setEditItem(null); setForm({ reminder_type:'custom', title:'', description:'', due_date:'', amount:'', priority:'normal' }); setShowForm(true) }
+  function openEdit(r) { setEditItem(r); setForm({ reminder_type: r.reminder_type, title: r.title, description: r.description||'', due_date: r.due_date, amount: r.amount||'', priority: r.priority }); setShowForm(true) }
+  function closeForm() { setShowForm(false); setEditItem(null) }
+
   async function submit(e) {
     e.preventDefault()
     if (!form.title || !form.due_date) return toast.error('Title and due date required')
-    try { await createReminder(form); toast.success('Reminder added'); setShowForm(false); load() }
+    try {
+      if (editItem) { await updateReminder(editItem.id, form); toast.success('Reminder updated') }
+      else { await createReminder(form); toast.success('Reminder added') }
+      closeForm(); load()
+    }
+    catch (err) { toast.error(err.message || 'Failed') }
+  }
+
+  async function handleDelete(r) {
+    if (!window.confirm(`Delete reminder "${r.title}"?`)) return
+    try { await deleteReminder(r.id); toast.success('Reminder deleted'); load() }
     catch (err) { toast.error(err.message || 'Failed') }
   }
 
@@ -61,7 +78,8 @@ export default function Reminders() {
           <h1>🔔 Reminders & Alerts</h1>
           <p>Stay on top of bills, payments, and deadlines</p>
         </div>
-        <button className="btn btn-primary" onClick={()=>setShowForm(true)}>➕ Add Reminder</button>
+        <button className="btn btn-primary" onClick={openAdd}>➕ Add Reminder</button>
+
       </div>
 
       {/* Count badges */}
@@ -110,9 +128,14 @@ export default function Reminders() {
                   </div>
                   {filter === 'pending' && (
                     <div style={{display:'flex',gap:6,flexShrink:0}}>
+                      <button className="btn btn-sm btn-secondary" onClick={()=>openEdit(r)} title="Edit">✏️</button>
                       <button className="btn btn-sm btn-success" onClick={()=>complete(r.id)}>✅ Done</button>
                       <button className="btn btn-sm btn-ghost" onClick={()=>dismiss(r.id)}>✕</button>
+                      <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={()=>handleDelete(r)} title="Delete">🗑️</button>
                     </div>
+                  )}
+                  {filter !== 'pending' && (
+                    <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={()=>handleDelete(r)} title="Delete">🗑️</button>
                   )}
                 </div>
               )
@@ -121,9 +144,9 @@ export default function Reminders() {
       }
 
       {showForm && (
-        <div className="modal-overlay" onClick={()=>setShowForm(false)}>
+        <div className="modal-overlay" onClick={closeForm}>
           <div className="modal modal-sm" onClick={e=>e.stopPropagation()}>
-            <div className="modal-header"><span className="modal-title">🔔 Add Reminder</span><button className="modal-close" onClick={()=>setShowForm(false)}>✕</button></div>
+            <div className="modal-header"><span className="modal-title">{editItem ? '✏️ Edit Reminder' : '🔔 Add Reminder'}</span><button className="modal-close" onClick={closeForm}>✕</button></div>
             <form onSubmit={submit}>
               <div className="modal-body">
                 <div className="form-group"><label className="form-label">Title *</label><input className="form-control" value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))} required/></div>
@@ -138,8 +161,8 @@ export default function Reminders() {
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={()=>setShowForm(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">✅ Add Reminder</button>
+                <button type="button" className="btn btn-secondary" onClick={closeForm}>Cancel</button>
+                <button type="submit" className="btn btn-primary">{editItem ? '💾 Update' : '✅ Add'} Reminder</button>
               </div>
             </form>
           </div>

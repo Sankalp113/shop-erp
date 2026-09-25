@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { getSaleReturns, getSales, getSale, createSaleReturn } from '../../services/db'
+import { getSaleReturns, getSales, getSale, createSaleReturn, deleteSaleReturn } from '../../services/db'
+
 import { useAuth } from '../../context/AuthContext'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`
@@ -45,6 +46,12 @@ export default function SalesReturns() {
     } catch (err) { toast.error(err.message || 'Failed') }
   }
 
+  async function handleDelete(r) {
+    if (!window.confirm(`Delete return record ${r.return_number}? This only removes the record — stock that was restored will NOT be reversed.`)) return
+    try { await deleteSaleReturn(r.id); toast.success('Return deleted'); load() }
+    catch (err) { toast.error(err.message || 'Failed') }
+  }
+
   return (
     <div>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -57,7 +64,7 @@ export default function SalesReturns() {
             : returns.length === 0
               ? <div className="empty-state"><div className="empty-state-icon">↩️</div><h3>No returns yet</h3></div>
               : <div className="table-container"><table className="table">
-                <thead><tr><th>Return #</th><th>Date</th><th>Original Invoice</th><th>Reason</th><th style={{ textAlign: 'right' }}>Amount</th><th>Refund</th></tr></thead>
+                <thead><tr><th>Return #</th><th>Date</th><th>Original Invoice</th><th>Reason</th><th style={{ textAlign: 'right' }}>Amount</th><th>Refund</th><th></th></tr></thead>
                 <tbody>{returns.map(r => (
                   <tr key={r.id}>
                     <td style={{ fontWeight: 600, color: 'var(--primary-light)' }}>{r.return_number}</td>
@@ -66,6 +73,14 @@ export default function SalesReturns() {
                     <td>{r.return_reason || '—'}</td>
                     <td style={{ textAlign: 'right', color: 'var(--danger-light)', fontWeight: 700 }}>{fmt(r.total_return_amount)}</td>
                     <td><span className="badge badge-info">{(r.refund_mode || '').toUpperCase()}</span></td>
+                    <td>
+                      <button
+                        className="btn btn-sm"
+                        style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}}
+                        onClick={() => handleDelete(r)}
+                        title="Delete return record"
+                      >🗑️</button>
+                    </td>
                   </tr>
                 ))}</tbody>
               </table></div>
