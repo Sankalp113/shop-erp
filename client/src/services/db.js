@@ -20,7 +20,7 @@ const toData = (snap) => snap.exists() ? { id: snap.id, ...snap.data() } : null
 const toDocs = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data() }))
 const today = () => new Date().toISOString().split('T')[0]
 const now = () => new Date().toISOString()
-const usernameToEmail = (u) => `${u.toLowerCase().trim()}@shopapp.internal`
+const usernameToEmail = (u) => `${u.toLowerCase().trim()}@jkb.in`
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 
