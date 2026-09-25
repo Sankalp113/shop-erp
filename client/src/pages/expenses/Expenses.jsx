@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { getExpenseCategories, getExpenses, createExpense, deleteExpense } from '../../services/db'
+import { getExpenseCategories, getExpenses, createExpense, deleteExpense, updateExpense } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
+const BLANK = { expense_date: new Date().toISOString().split('T')[0], category_id:'', description:'', amount:'', payment_mode:'cash', vendor_person:'', notes:'' }
 
 export default function Expenses() {
   const { user } = useAuth()
@@ -14,7 +15,8 @@ export default function Expenses() {
   const [catId, setCatId] = useState('')
   const [total, setTotal] = useState(0)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ expense_date: new Date().toISOString().split('T')[0], category_id:'', description:'', amount:'', payment_mode:'cash', vendor_person:'', notes:'' })
+  const [editItem, setEditItem] = useState(null)
+  const [form, setForm] = useState(BLANK)
 
   useEffect(() => { getExpenseCategories().then(setCategories) }, [])
   useEffect(() => { load() }, [period, catId])
@@ -34,17 +36,37 @@ export default function Expenses() {
     const r = await getExpenses({ ...range, category_id: catId })
     setExpenses(r.data); setTotal(r.totals?.total || 0); setLoading(false)
   }
+
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
+
+  function openAdd() { setEditItem(null); setForm(BLANK); setShowForm(true) }
+  function openEdit(e) {
+    setEditItem(e)
+    setForm({ expense_date: e.expense_date, category_id: e.category_id||'', description: e.description, amount: e.amount, payment_mode: e.payment_mode||'cash', vendor_person: e.vendor_person||'', notes: e.notes||'' })
+    setShowForm(true)
+  }
+  function closeForm() { setShowForm(false); setEditItem(null); setForm(BLANK) }
 
   async function submit(e) {
     e.preventDefault()
     if (!form.description || !form.amount) return toast.error('Description and amount required')
     const cat = categories.find(c => c.id === form.category_id)
     try {
-      await createExpense({ ...form, category_name: cat?.name || '' }, user?.uid)
-      toast.success('Expense recorded')
-      setShowForm(false); setForm({ expense_date: new Date().toISOString().split('T')[0], category_id:'', description:'', amount:'', payment_mode:'cash', vendor_person:'', notes:'' }); load()
+      if (editItem) {
+        await updateExpense(editItem.id, { ...form, category_name: cat?.name || editItem.category_name || '' })
+        toast.success('Expense updated')
+      } else {
+        await createExpense({ ...form, category_name: cat?.name || '' }, user?.uid)
+        toast.success('Expense recorded')
+      }
+      closeForm(); load()
     } catch (err) { toast.error(err.message || 'Failed') }
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm('Delete this expense?')) return
+    try { await deleteExpense(id); toast.success('Deleted'); load() }
+    catch (err) { toast.error(err.message) }
   }
 
   return (
@@ -53,7 +75,7 @@ export default function Expenses() {
         <div><h1>💸 Miscellaneous Expenses</h1><p>Track all business expenses</p></div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           <div className="stat-chip"><span className="stat-chip-value" style={{color:'var(--danger)'}}>{fmt(total)}</span><span className="stat-chip-label">Total</span></div>
-          <button className="btn btn-primary" onClick={()=>setShowForm(true)}>➕ Add Expense</button>
+          <button className="btn btn-primary" onClick={openAdd}>➕ Add Expense</button>
         </div>
       </div>
 
@@ -84,7 +106,10 @@ export default function Expenses() {
                     <td><span className="badge badge-info">{(e.payment_mode||'').toUpperCase()}</span></td>
                     <td style={{fontSize:12,color:'var(--text-muted)'}}>{e.vendor_person||'—'}</td>
                     <td style={{textAlign:'right',fontWeight:700,color:'var(--danger)'}}>{fmt(e.amount)}</td>
-                    <td><button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm('Delete this expense?'))return;try{await deleteExpense(e.id);toast.success('Deleted');load()}catch(err){toast.error(err.message)}}}>🗑️</button></td>
+                    <td><div style={{display:'flex',gap:4}}>
+                      <button className="btn btn-sm btn-secondary" onClick={()=>openEdit(e)}>✏️</button>
+                      <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={()=>handleDelete(e.id)}>🗑️</button>
+                    </div></td>
                   </tr>
                 ))}</tbody>
               </table></div>
@@ -93,9 +118,9 @@ export default function Expenses() {
       </div>
 
       {showForm && (
-        <div className="modal-overlay" onClick={()=>setShowForm(false)}>
+        <div className="modal-overlay" onClick={closeForm}>
           <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="modal-header"><span className="modal-title">💸 Add Expense</span><button className="modal-close" onClick={()=>setShowForm(false)}>✕</button></div>
+            <div className="modal-header"><span className="modal-title">💸 {editItem?'Edit':'Add'} Expense</span><button className="modal-close" onClick={closeForm}>✕</button></div>
             <form onSubmit={submit}>
               <div className="modal-body">
                 <div className="form-row">
@@ -116,8 +141,8 @@ export default function Expenses() {
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={()=>setShowForm(false)}>Cancel</button>
-                <button type="submit" className="btn btn-danger">✅ Add Expense</button>
+                <button type="button" className="btn btn-secondary" onClick={closeForm}>Cancel</button>
+                <button type="submit" className="btn btn-primary">{editItem?'💾 Update':'✅ Add'} Expense</button>
               </div>
             </form>
           </div>

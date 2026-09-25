@@ -757,6 +757,8 @@ export async function createExpense({ expense_date, category_id, category_name, 
 }
 
 export async function deleteExpense(id) { await deleteDoc(doc(firestore, 'expenses', id)) }
+export async function updateExpense(id, data) { await updateDoc(doc(firestore, 'expenses', id), { ...data, amount: Number(data.amount), updated_at: now() }) }
+
 
 // Electricity
 export async function getElectricityBills() {

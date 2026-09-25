@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { getBankAccounts, addBankAccount, getBankTransactions, addBankTransactionFixed } from '../../services/db'
+import { getBankAccounts, addBankAccount, getBankTransactions, addBankTransactionFixed, deleteBankAccount, deleteBankTransaction } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
@@ -63,7 +63,10 @@ export default function BankAccounts() {
             <div className="card-body">
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}}>
                 <div style={{fontSize:24}}>🏦</div>
-                {selected===acc.id && <span className="badge badge-primary">Selected</span>}
+                <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                  {selected===acc.id && <span className="badge badge-primary">Selected</span>}
+                  <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)',padding:'2px 7px'}} onClick={async(e)=>{e.stopPropagation();if(!window.confirm(`Delete account "${acc.account_name}"?`))return;try{await deleteBankAccount(acc.id);toast.success('Account deleted');loadAccounts()}catch(err){toast.error(err.message)}}}>🗑️</button>
+                </div>
               </div>
               <div style={{fontWeight:700,marginBottom:4}}>{acc.account_name}</div>
               <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:12}}>{acc.bank_name}{acc.account_number?` · ****${acc.account_number.slice(-4)}`:''}</div>
@@ -93,7 +96,7 @@ export default function BankAccounts() {
                 : transactions.length===0
                   ? <div className="empty-state"><div className="empty-state-icon">🏦</div><h3>No transactions in this period</h3></div>
                   : <div className="table-container"><table className="table">
-                    <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Reference</th><th style={{textAlign:'right'}}>Credit</th><th style={{textAlign:'right'}}>Debit</th><th style={{textAlign:'right'}}>Balance</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Reference</th><th style={{textAlign:'right'}}>Credit</th><th style={{textAlign:'right'}}>Debit</th><th style={{textAlign:'right'}}>Balance</th><th></th></tr></thead>
                     <tbody>{transactions.map(t=>(
                       <tr key={t.id}>
                         <td style={{fontSize:12,color:'var(--text-muted)'}}>{t.transaction_date}</td>
@@ -103,6 +106,7 @@ export default function BankAccounts() {
                         <td style={{textAlign:'right',color:'var(--success)',fontWeight:t.amount>0?700:400}}>{t.amount>0?fmt(t.amount):'—'}</td>
                         <td style={{textAlign:'right',color:'var(--danger)',fontWeight:t.amount<0?700:400}}>{t.amount<0?fmt(Math.abs(t.amount)):'—'}</td>
                         <td style={{textAlign:'right',fontWeight:700}}>{fmt(t.balance_after)}</td>
+                        <td><button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm('Delete this transaction?'))return;try{await deleteBankTransaction(t.id);toast.success('Deleted');loadTxns()}catch(err){toast.error(err.message)}}}>🗑️</button></td>
                       </tr>
                     ))}</tbody>
                   </table></div>

@@ -1,35 +1,55 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { getExpenseCategories, getRecurringExpenses, createRecurringExpense, toggleRecurringExpense } from '../../services/db'
+import { getExpenseCategories, getRecurringExpenses, createRecurringExpense, toggleRecurringExpense, updateRecurringExpense, deleteRecurringExpense } from '../../services/db'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
+const BLANK = { name:'', category_id:'', amount:'', frequency:'monthly', next_due_date:'', payment_mode:'cash', vendor_person:'', notes:'' }
 
 export default function RecurringExpenses() {
   const [items, setItems] = useState([])
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name:'', category_id:'', amount:'', frequency:'monthly', next_due_date:'', payment_mode:'cash', vendor_person:'', notes:'' })
+  const [editItem, setEditItem] = useState(null)
+  const [form, setForm] = useState(BLANK)
 
-  useEffect(() => {
-    getExpenseCategories().then(setCategories)
-    load()
-  }, [])
-
+  useEffect(() => { getExpenseCategories().then(setCategories); load() }, [])
   async function load() { const items = await getRecurringExpenses(); setItems(items); setLoading(false) }
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
+
+  function openAdd() { setEditItem(null); setForm(BLANK); setShowForm(true) }
+  function openEdit(it) {
+    setEditItem(it)
+    setForm({ name:it.name, category_id:it.category_id||'', amount:it.amount||'', frequency:it.frequency||'monthly', next_due_date:it.next_due_date||'', payment_mode:it.payment_mode||'cash', vendor_person:it.vendor_person||'', notes:it.notes||'' })
+    setShowForm(true)
+  }
+  function closeForm() { setShowForm(false); setEditItem(null); setForm(BLANK) }
 
   async function submit(e) {
     e.preventDefault()
     if (!form.name || !form.amount || !form.next_due_date) return toast.error('Fill required fields')
     const cat = categories.find(c => c.id === form.category_id)
-    try { await createRecurringExpense({ ...form, category_name: cat?.name || '' }); toast.success('Recurring expense added'); setShowForm(false); load() }
-    catch (err) { toast.error(err.message || 'Failed') }
+    try {
+      if (editItem) {
+        await updateRecurringExpense(editItem.id, { ...form, category_name: cat?.name || editItem.category_name || '' })
+        toast.success('Recurring expense updated')
+      } else {
+        await createRecurringExpense({ ...form, category_name: cat?.name || '' })
+        toast.success('Recurring expense added')
+      }
+      closeForm(); load()
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   async function toggleActive(item) {
     await toggleRecurringExpense(item.id, !item.is_active)
     toast.success(item.is_active ? 'Paused' : 'Activated'); load()
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm('Delete this recurring expense?')) return
+    try { await deleteRecurringExpense(id); toast.success('Deleted'); load() }
+    catch (err) { toast.error(err.message) }
   }
 
   const FREQ_COLORS = { daily:'badge-danger', weekly:'badge-warning', monthly:'badge-primary', quarterly:'badge-info', annual:'badge-muted' }
@@ -39,7 +59,7 @@ export default function RecurringExpenses() {
     <div>
       <div className="page-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <div><h1>🔄 Recurring Expenses</h1><p>Auto-tracked recurring bills and subscriptions</p></div>
-        <button className="btn btn-primary" onClick={()=>setShowForm(true)}>➕ Add Recurring</button>
+        <button className="btn btn-primary" onClick={openAdd}>➕ Add Recurring</button>
       </div>
       <div className="card">
         <div className="card-body" style={{padding:0}}>
@@ -59,7 +79,11 @@ export default function RecurringExpenses() {
                     <td style={{textAlign:'right',fontWeight:700}}>{fmt(it.amount)}</td>
                     <td style={{fontSize:12}}>{it.payment_mode||'—'}</td>
                     <td><span className={`badge ${it.is_active?'badge-success':'badge-muted'}`}>{it.is_active?'Active':'Paused'}</span></td>
-                    <td><button className={`btn btn-sm ${it.is_active?'btn-secondary':'btn-primary'}`} onClick={()=>toggleActive(it)}>{it.is_active?'⏸ Pause':'▶ Resume'}</button></td>
+                    <td><div style={{display:'flex',gap:4}}>
+                      <button className={`btn btn-sm ${it.is_active?'btn-secondary':'btn-primary'}`} onClick={()=>toggleActive(it)}>{it.is_active?'⏸':'▶'}</button>
+                      <button className="btn btn-sm btn-secondary" onClick={()=>openEdit(it)}>✏️</button>
+                      <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={()=>handleDelete(it.id)}>🗑️</button>
+                    </div></td>
                   </tr>
                 ))}</tbody>
               </table></div>
@@ -67,9 +91,9 @@ export default function RecurringExpenses() {
         </div>
       </div>
       {showForm && (
-        <div className="modal-overlay" onClick={()=>setShowForm(false)}>
+        <div className="modal-overlay" onClick={closeForm}>
           <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="modal-header"><span className="modal-title">🔄 Add Recurring Expense</span><button className="modal-close" onClick={()=>setShowForm(false)}>✕</button></div>
+            <div className="modal-header"><span className="modal-title">🔄 {editItem?'Edit':'Add'} Recurring Expense</span><button className="modal-close" onClick={closeForm}>✕</button></div>
             <form onSubmit={submit}>
               <div className="modal-body">
                 <div className="form-row">
@@ -93,8 +117,8 @@ export default function RecurringExpenses() {
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={()=>setShowForm(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">✅ Add</button>
+                <button type="button" className="btn btn-secondary" onClick={closeForm}>Cancel</button>
+                <button type="submit" className="btn btn-primary">{editItem?'💾 Update':'✅ Add'}</button>
               </div>
             </form>
           </div>

@@ -1,25 +1,43 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { getRentRecords, addRentRecord, payRentByMode, deleteRentRecord } from '../../services/db'
+import { getRentRecords, addRentRecord, payRentByMode, deleteRentRecord, updateRentRecord } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
+const BLANK = { rent_type:'monthly', period_start:'', period_end:'', amount:'', due_date:'', landlord_name:'', notes:'' }
 
 export default function Rent() {
   const { user } = useAuth()
   const [rents, setRents] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ rent_type:'monthly', period_start:'', period_end:'', amount:'', due_date:'', landlord_name:'', notes:'' })
+  const [editItem, setEditItem] = useState(null)
+  const [form, setForm] = useState(BLANK)
 
   useEffect(() => { load() }, [])
   async function load() { const recs = await getRentRecords(); setRents(recs); setLoading(false) }
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
+  function openAdd() { setEditItem(null); setForm(BLANK); setShowForm(true) }
+  function openEdit(r) {
+    setEditItem(r)
+    setForm({ rent_type:r.rent_type||'monthly', period_start:r.period_start||'', period_end:r.period_end||'', amount:r.amount||'', due_date:r.due_date||'', landlord_name:r.landlord_name||'', notes:r.notes||'' })
+    setShowForm(true)
+  }
+  function closeForm() { setShowForm(false); setEditItem(null); setForm(BLANK) }
+
   async function submit(e) {
     e.preventDefault()
-    try { await addRentRecord(form, user?.uid); toast.success('Rent record added'); setShowForm(false); load() }
-    catch (err) { toast.error(err.message || 'Failed') }
+    try {
+      if (editItem) {
+        await updateRentRecord(editItem.id, form)
+        toast.success('Rent record updated')
+      } else {
+        await addRentRecord(form, user?.uid)
+        toast.success('Rent record added')
+      }
+      closeForm(); load()
+    } catch (err) { toast.error(err.message || 'Failed') }
   }
 
   async function pay(id, mode='cash') {
@@ -36,7 +54,7 @@ export default function Rent() {
         <div><h1>🏠 Shop Rent</h1><p>Track monthly rent payments</p></div>
         <div style={{display:'flex',gap:8}}>
           {totalPending > 0 && <div className="stat-chip" style={{background:'rgba(245,158,11,0.1)',border:'1px solid rgba(245,158,11,0.3)'}}><span style={{fontWeight:700,color:'var(--warning)'}}>{fmt(totalPending)}</span><span className="stat-chip-label">Pending</span></div>}
-          <button className="btn btn-primary" onClick={()=>setShowForm(true)}>➕ Add Rent</button>
+          <button className="btn btn-primary" onClick={openAdd}>➕ Add Rent</button>
         </div>
       </div>
 
@@ -56,7 +74,11 @@ export default function Rent() {
                     <td style={{textAlign:'right',fontWeight:700}}>{fmt(r.amount)}</td>
                     <td><span className={`badge ${r.status==='paid'?'badge-success':'badge-danger'}`}>{r.status}</span></td>
                     <td style={{fontSize:12,color:'var(--text-muted)'}}>{r.payment_date||'—'}</td>
-                    <td><div style={{display:'flex',gap:4}}>{r.status==='pending' && (<><button className="btn btn-sm btn-success" onClick={()=>pay(r.id,'cash')}>Cash</button><button className="btn btn-sm btn-secondary" onClick={()=>pay(r.id,'upi')}>UPI</button></>)}<button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm('Delete this rent record?'))return;try{await deleteRentRecord(r.id);toast.success('Deleted');load()}catch(e){toast.error(e.message)}}}>🗑️</button></div></td>
+                    <td><div style={{display:'flex',gap:4}}>
+                      {r.status==='pending' && (<><button className="btn btn-sm btn-success" onClick={()=>pay(r.id,'cash')}>Cash</button><button className="btn btn-sm btn-secondary" onClick={()=>pay(r.id,'upi')}>UPI</button></>)}
+                      <button className="btn btn-sm btn-secondary" onClick={()=>openEdit(r)}>✏️</button>
+                      <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm('Delete this rent record?'))return;try{await deleteRentRecord(r.id);toast.success('Deleted');load()}catch(e){toast.error(e.message)}}}>🗑️</button>
+                    </div></td>
                   </tr>
                 ))}</tbody>
               </table></div>
@@ -65,9 +87,9 @@ export default function Rent() {
       </div>
 
       {showForm && (
-        <div className="modal-overlay" onClick={()=>setShowForm(false)}>
+        <div className="modal-overlay" onClick={closeForm}>
           <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="modal-header"><span className="modal-title">🏠 Add Rent Record</span><button className="modal-close" onClick={()=>setShowForm(false)}>✕</button></div>
+            <div className="modal-header"><span className="modal-title">🏠 {editItem?'Edit':'Add'} Rent Record</span><button className="modal-close" onClick={closeForm}>✕</button></div>
             <form onSubmit={submit}>
               <div className="modal-body">
                 <div className="form-row">
@@ -83,8 +105,8 @@ export default function Rent() {
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={()=>setShowForm(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">✅ Add Rent</button>
+                <button type="button" className="btn btn-secondary" onClick={closeForm}>Cancel</button>
+                <button type="submit" className="btn btn-primary">{editItem?'💾 Update':'✅ Add'} Rent</button>
               </div>
             </form>
           </div>
