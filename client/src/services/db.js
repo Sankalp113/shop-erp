@@ -262,8 +262,9 @@ async function logStockTx(productId, productName, txType, refType, refId, change
   })
 }
 
-export async function createStockAdjustment({ product_id, variant_id, adjustment_type, quantity_change, reason, notes, product_name }, userId) {
+export async function createStockAdjustment({ product_id, variant_id, adjustment_type, quantity_change, reason, notes, product_name, adjustment_date }, userId) {
   let before, after
+  const adjDate = adjustment_date || today()
   await runTransaction(firestore, async (tx) => {
     const res = await updateProductStockInTx(tx, product_id, Number(quantity_change))
     before = res.before; after = res.after
@@ -271,6 +272,7 @@ export async function createStockAdjustment({ product_id, variant_id, adjustment
       product_id, product_name: product_name || '', variant_id: variant_id || null,
       adjustment_type, quantity_change: Number(quantity_change),
       quantity_before: before, quantity_after: after,
+      adjustment_date: adjDate,
       reason, notes: notes || '', created_by: userId || null, created_at: now()
     })
   })
@@ -1450,8 +1452,17 @@ export async function deleteCashTransaction(id) {
   await deleteDoc(doc(firestore, 'cashTransactions', id))
 }
 
-// Stock adjustments
+// Stock adjustments — reverses the stock change on delete
 export async function deleteStockAdjustment(id) {
+  const snap = await getDoc(doc(firestore, 'stockAdjustments', id))
+  if (!snap.exists()) return
+  const adj = snap.data()
+  // Reverse the stock change: if adjustment was +5, revert by -5
+  if (adj.product_id && adj.quantity_change !== undefined) {
+    await runTransaction(firestore, async (tx) => {
+      await updateProductStockInTx(tx, adj.product_id, -Number(adj.quantity_change))
+    })
+  }
   await deleteDoc(doc(firestore, 'stockAdjustments', id))
 }
 
