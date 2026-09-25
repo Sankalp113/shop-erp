@@ -2,12 +2,16 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { getCustomers, createCustomer, deleteCustomer, updateCustomer } from '../../services/db'
+import { useRefresh } from '../../context/RefreshContext'
+
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 const BLANK = { name:'',mobile:'',email:'',address:'',city:'',credit_limit:0,opening_balance:0,notes:'' }
 
 export default function CustomerList() {
   const navigate = useNavigate()
+  const { refresh } = useRefresh()
+
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -33,7 +37,8 @@ export default function CustomerList() {
 
   async function handleDelete(c) {
     if (!window.confirm(`Delete customer "${c.name}"? This cannot be undone.`)) return
-    try { await deleteCustomer(c.id); toast.success('Customer deleted'); load() }
+    try { await deleteCustomer(c.id); toast.success('Customer deleted'); refresh('customers'); load() }
+
     catch (err) { toast.error(err.message || 'Failed to delete') }
   }
 
@@ -48,7 +53,9 @@ export default function CustomerList() {
         await createCustomer(form)
         toast.success('Customer added')
       }
+      refresh('customers')
       closeForm(); load()
+
     } catch (err) { toast.error(err.message || 'Failed') }
   }
 

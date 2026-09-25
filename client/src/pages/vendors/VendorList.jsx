@@ -2,12 +2,16 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { getVendors, createVendor, deleteVendor, updateVendor } from '../../services/db'
+import { useRefresh } from '../../context/RefreshContext'
+
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 const BLANK = { name:'',company_name:'',mobile:'',email:'',address:'',city:'',gstin:'',payment_terms:30,opening_balance:0,notes:'' }
 
 export default function VendorList() {
   const navigate = useNavigate()
+  const { refresh } = useRefresh()
+
   const [vendors, setVendors] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -33,7 +37,7 @@ export default function VendorList() {
 
   async function handleDelete(v) {
     if (!window.confirm(`Delete vendor "${v.name}"? This cannot be undone.`)) return
-    try { await deleteVendor(v.id); toast.success('Vendor deleted'); load() }
+    try { await deleteVendor(v.id); toast.success('Vendor deleted'); refresh('vendors'); load() }
     catch (err) { toast.error(err.message || 'Failed to delete') }
   }
 
@@ -48,7 +52,9 @@ export default function VendorList() {
         await createVendor(form)
         toast.success('Vendor added')
       }
+      refresh('vendors')
       closeForm(); load()
+
     } catch (err) { toast.error(err.message || 'Failed') }
   }
 

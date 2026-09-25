@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { getSales, getSale, cancelSale as dbCancelSale, deleteSale } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
+import { useRefresh } from '../../context/RefreshContext'
+
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`
 
@@ -11,6 +13,8 @@ const PERIODS = ['today', 'yesterday', 'this_week', 'this_month', 'last_month', 
 export default function SalesHistory() {
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { refresh } = useRefresh()
+
   const [sales, setSales] = useState([])
   const [totals, setTotals] = useState({})
   const [loading, setLoading] = useState(true)
@@ -56,7 +60,9 @@ export default function SalesHistory() {
     try {
       await dbCancelSale(id, user?.uid, user?.username)
       toast.success('Sale cancelled')
+      refresh('sales', 'stock', 'products')
       load()
+
       setDetail(null)
     } catch (err) { toast.error(err.message || 'Failed') }
   }
@@ -140,7 +146,7 @@ export default function SalesHistory() {
                           <td>
                             <div style={{display:'flex',gap:4}}>
                               <button className="btn btn-sm btn-ghost" onClick={() => loadDetail(s.id)}>👁 View</button>
-                              <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm(`Delete invoice ${s.invoice_number}? Stock will be restored.`))return;try{await deleteSale(s.id);toast.success('Sale deleted');load()}catch(e){toast.error(e.message)}}}>🗑️</button>
+                              <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm(`Delete invoice ${s.invoice_number}? Stock will be restored.`))return;try{await deleteSale(s.id);toast.success('Sale deleted');refresh('sales','stock','products');load()}catch(e){toast.error(e.message)}}}>🗑️</button>
                             </div>
                           </td>
                         </tr>

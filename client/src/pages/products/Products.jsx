@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getCategoriesTree, getProducts, deleteProduct } from '../../services/db'
-
 import toast from 'react-hot-toast'
+import { useRefresh } from '../../context/RefreshContext'
+
 
 export default function Products() {
   const navigate = useNavigate()
+  const { version, refresh } = useRefresh()
   const [products, setProducts] = useState([])
+
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [catId, setCatId] = useState('')
@@ -15,7 +18,8 @@ export default function Products() {
   const [total, setTotal] = useState(0)
 
   useEffect(() => { getCategoriesTree().then(setCatTree) }, [])
-  useEffect(() => { load() }, [search, catId, page])
+  useEffect(() => { load() }, [search, catId, page, version.products, version.stock])
+
 
   async function load() {
     setLoading(true)
@@ -75,7 +79,7 @@ export default function Products() {
                       <span style={{ color: p.total_stock <= p.min_stock_level ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>{p.total_stock}</span>
                     </td>
                     <td><span className={`badge ${p.is_active ? 'badge-success' : 'badge-muted'}`}>{p.is_active ? 'Active' : 'Inactive'}</span></td>
-                    <td><div style={{display:'flex',gap:4}}><button className="btn btn-sm btn-secondary" onClick={() => navigate(`/products/${p.id}/edit`)}>✏️</button><button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm(`Delete product "${p.name}"?`))return;try{await deleteProduct(p.id);toast.success('Product deleted');load()}catch(e){toast.error(e.message)}}}>🗑️</button></div></td>
+                    <td><div style={{display:'flex',gap:4}}><button className="btn btn-sm btn-secondary" onClick={() => navigate(`/products/${p.id}/edit`)}>✏️</button><button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm(`Delete product "${p.name}"?`))return;try{await deleteProduct(p.id);toast.success('Product deleted');refresh('products','stock');load()}catch(e){toast.error(e.message)}}}>🗑️</button></div></td>
                   </tr>
                 ))}</tbody>
               </table></div>

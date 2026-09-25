@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { getCategories, getStock, getStockTransactions, getCategoriesTree } from '../../services/db'
+import { useRefresh } from '../../context/RefreshContext'
 
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
@@ -13,6 +14,7 @@ const TXN_ICON = {
 }
 
 export default function StockOverview() {
+  const { version } = useRefresh()
   const [stock, setStock] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -25,7 +27,8 @@ export default function StockOverview() {
   const [historyLoading, setHistoryLoading] = useState(false)
 
   useEffect(() => { getCategoriesTree().then(setCatTree) }, [])
-  useEffect(() => { load() }, [search, catId, page])
+  useEffect(() => { load() }, [search, catId, page, version.stock, version.products])
+
 
   async function load() {
     setLoading(true)

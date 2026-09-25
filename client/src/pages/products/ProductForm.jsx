@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { getCategoriesTree, getBrands, getSizes, getColors, getProduct, createProduct, updateProduct } from '../../services/db'
+import { useRefresh } from '../../context/RefreshContext'
 
 
 export default function ProductForm() {
   const { id } = useParams()
   const navigate = useNavigate()
   const isEdit = Boolean(id)
+  const { refresh } = useRefresh()
   const [catTree, setCatTree] = useState({ parents: [], children: {} })
 
   const [brands, setBrands] = useState([])
@@ -58,6 +60,7 @@ export default function ProductForm() {
         await createProduct(payload)
         toast.success('Product created')
       }
+      refresh('products', 'stock')
       navigate('/products')
     } catch (err) { toast.error(err.message || 'Failed') } finally { setLoading(false) }
   }

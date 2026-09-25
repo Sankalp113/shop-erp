@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { getProducts, getStockAdjustments, createStockAdjustment, deleteStockAdjustment } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
+import { useRefresh } from '../../context/RefreshContext'
+
 
 const TYPES = ['damaged', 'missing', 'physical_count', 'expired', 'sample', 'internal_use', 'correction', 'received', 'returned']
 const BLANK = { product_id: '', adjustment_type: 'physical_count', quantity_change: '', reason: '', notes: '', adjustment_date: new Date().toISOString().split('T')[0] }
@@ -15,6 +17,8 @@ const typeColor = t => ({
 
 export default function StockAdjustments() {
   const { user } = useAuth()
+  const { refresh } = useRefresh()
+
   const [adjustments, setAdjustments] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -66,7 +70,9 @@ export default function StockAdjustments() {
         product_name: selProduct?.name
       }, user?.uid)
       toast.success('Stock adjustment recorded — stock updated')
+      refresh('stock', 'products')
       closeForm(); load()
+
     } catch (err) { toast.error(err.message || 'Failed') }
   }
 
@@ -75,7 +81,9 @@ export default function StockAdjustments() {
     try {
       await deleteStockAdjustment(a.id)
       toast.success('Adjustment deleted and stock reversed')
+      refresh('stock', 'products')
       load()
+
     } catch (err) { toast.error(err.message || 'Failed') }
   }
 

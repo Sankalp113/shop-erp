@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { getVendors, getProducts, getPurchases, getPurchase, createPurchase, updatePurchase, recordPurchasePayment, deletePurchase } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
+import { useRefresh } from '../../context/RefreshContext'
+
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 const today = () => new Date().toISOString().split('T')[0]
@@ -9,6 +11,8 @@ const BLANK_FORM = { vendor_id:'', vendor_invoice_number:'', purchase_date: toda
 
 export default function PurchaseHistory() {
   const { user } = useAuth()
+  const { refresh } = useRefresh()
+
   const [purchases, setPurchases] = useState([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('this_month')
@@ -120,7 +124,9 @@ export default function PurchaseHistory() {
         discount_amount: Number(editForm.discount_amount)
       }, user?.uid)
       toast.success(`✅ Purchase ${editModal.purchase_number} updated`)
+      refresh('purchases', 'stock', 'products')
       closeEdit(); load()
+
       if (detail?.id === editModal.id) loadDetail(editModal.id)
     } catch (err) { toast.error(err.message || 'Failed') } finally { setSaving(false) }
   }
@@ -180,7 +186,7 @@ export default function PurchaseHistory() {
                       <button className="btn btn-sm btn-ghost" onClick={()=>loadDetail(p.id)}>👁</button>
                       <button className="btn btn-sm btn-secondary" onClick={()=>openEdit(p)} title="Edit purchase">✏️</button>
                       {p.outstanding_amount>0 && <button className="btn btn-sm btn-warning" onClick={()=>{ setPayModal(p); setPayForm({amount:p.outstanding_amount.toFixed(2),payment_mode:'cash',payment_date:today()}) }}>💳 Pay</button>}
-                      <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm(`Delete purchase ${p.purchase_number}? Stock will be reversed.`))return;try{await deletePurchase(p.id);toast.success('Purchase deleted');load()}catch(e){toast.error(e.message)}}}>🗑️</button>
+                      <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={async()=>{if(!window.confirm(`Delete purchase ${p.purchase_number}? Stock will be reversed.`))return;try{await deletePurchase(p.id);toast.success('Purchase deleted');refresh('purchases','stock','products');load()}catch(e){toast.error(e.message)}}}>🗑️</button>
                     </td>
                   </tr>
                 ))}</tbody>
