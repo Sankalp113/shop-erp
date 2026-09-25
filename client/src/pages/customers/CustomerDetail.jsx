@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { getCustomer, getCustomerLedger, getSales, updateCustomer, recordCustomerPayment } from '../../services/db'
+import { getCustomer, getCustomerLedger, getSales, updateCustomer, recordCustomerPayment, deleteCustomer, cancelSale } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
+import { useRefresh } from '../../context/RefreshContext'
+
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
 
 export default function CustomerDetail() {
   const { id } = useParams(); const navigate = useNavigate()
   const { user } = useAuth()
+  const { refresh } = useRefresh()
+
   const [customer, setCustomer] = useState(null)
   const [ledger, setLedger] = useState([])
   const [sales, setSales] = useState([])
@@ -41,8 +45,20 @@ export default function CustomerDetail() {
     if (!payForm.amount) return toast.error('Enter amount')
     try {
       await recordCustomerPayment(id, payForm, user?.uid)
-      toast.success('Payment collected'); setPayModal(false); load()
+      toast.success('Payment collected'); setPayModal(false); refresh('sales'); load()
     } catch (err) { toast.error(err.message || 'Failed') }
+  }
+
+  async function handleDeleteCustomer() {
+    if (!window.confirm(`Delete customer "${customer?.name}"? This cannot be undone.`)) return
+    try { await deleteCustomer(id); toast.success('Customer deleted'); refresh('customers'); navigate('/customers') }
+    catch (err) { toast.error(err.message || 'Failed') }
+  }
+
+  async function handleCancelSale(s) {
+    if (!window.confirm(`Cancel sale ${s.invoice_number}? Stock will be restored.`)) return
+    try { await cancelSale(s.id, user?.uid); toast.success('Sale cancelled'); refresh('sales','stock','products'); load() }
+    catch (err) { toast.error(err.message || 'Failed') }
   }
 
   if (loading) return <div className="loading-overlay"><span className="loading-spinner"/></div>
@@ -63,6 +79,7 @@ export default function CustomerDetail() {
             {outstanding > 0 && <button className="btn btn-warning" onClick={() => { setPayModal(true); setPayForm(p=>({...p, amount: outstanding.toFixed(2)})) }}>💳 Collect Payment</button>}
             <button className="btn btn-secondary" onClick={() => setEditing(!editing)}>{editing ? 'Cancel' : '✏️ Edit'}</button>
             {editing && <button className="btn btn-primary" onClick={saveEdit}>✅ Save</button>}
+            <button className="btn" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={handleDeleteCustomer}>🗑️ Delete</button>
           </div>
         </div>
       </div>
@@ -133,7 +150,7 @@ export default function CustomerDetail() {
             {sales.length === 0
               ? <div className="empty-state"><div className="empty-state-icon">🛒</div><h3>No sales yet</h3></div>
               : <div className="table-container"><table className="table">
-                <thead><tr><th>Invoice</th><th>Date</th><th style={{textAlign:'right'}}>Total</th><th style={{textAlign:'right'}}>Credit</th><th style={{textAlign:'right'}}>Paid</th><th>Status</th></tr></thead>
+                <thead><tr><th>Invoice</th><th>Date</th><th style={{textAlign:'right'}}>Total</th><th style={{textAlign:'right'}}>Credit</th><th style={{textAlign:'right'}}>Paid</th><th>Status</th><th></th></tr></thead>
                 <tbody>{sales.map(s => (
                   <tr key={s.id}>
                     <td style={{fontWeight:600,color:'var(--primary-light)'}}>{s.invoice_number}</td>
@@ -141,7 +158,8 @@ export default function CustomerDetail() {
                     <td style={{textAlign:'right',fontWeight:700}}>{fmt(s.total_amount)}</td>
                     <td style={{textAlign:'right',color:s.credit_amount>0?'var(--warning)':'var(--text-muted)'}}>{fmt(s.credit_amount)}</td>
                     <td style={{textAlign:'right',color:'var(--success)'}}>{fmt(s.paid_amount)}</td>
-                    <td><span className={`badge ${s.status==='completed'?'badge-success':'badge-muted'}`}>{s.status}</span></td>
+                    <td><span className={`badge ${s.status==='completed'?'badge-success':s.status==='cancelled'?'badge-danger':'badge-muted'}`}>{s.status}</span></td>
+                    <td>{s.status === 'completed' && <button className="btn btn-sm" style={{background:'rgba(239,68,68,0.15)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.3)'}} onClick={() => handleCancelSale(s)}>✕ Cancel</button>}</td>
                   </tr>
                 ))}</tbody>
               </table></div>
