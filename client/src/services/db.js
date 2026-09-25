@@ -711,6 +711,57 @@ export async function recordPurchasePayment(purchaseId, { amount, payment_mode, 
   if (payment_mode === 'cash') await addCashOutflow(Number(amount), `Payment for ${purchase.purchase_number}`, 'purchase_payment', purchaseId, payment_date || today(), userId)
 }
 
+export async function updatePurchase(id, { vendor_id, vendor_name, vendor_invoice_number, purchase_date, items, discount_amount = 0, paid_amount = 0, payment_mode, notes }, userId) {
+  if (!items || items.length === 0) throw new Error('Purchase must have at least one item')
+
+  // 1. Reverse stock for all existing items and delete them
+  const existingItemsSnap = await getDocs(query(collection(firestore, 'purchaseItems'), where('purchase_id', '==', id)))
+  for (const itemDoc of existingItemsSnap.docs) {
+    const item = itemDoc.data()
+    if (item.product_id) {
+      await runTransaction(firestore, async (tx) => {
+        await updateProductStockInTx(tx, item.product_id, -item.quantity) // reverse the addition
+      })
+    }
+    await deleteDoc(itemDoc.ref)
+  }
+
+  // 2. Recalculate totals with new items
+  let subtotal = 0, tax_amount = 0
+  const processedItems = items.map(item => {
+    const itemDisc = (item.unit_price * item.quantity) * (item.discount_percent || 0) / 100
+    const itemNet = (item.unit_price * item.quantity) - itemDisc
+    const itemTax = itemNet * (item.tax_percent || 0) / 100
+    subtotal += item.unit_price * item.quantity
+    tax_amount += itemTax
+    return { ...item, discount_amount: itemDisc, tax_amount: itemTax, total_price: itemNet + itemTax }
+  })
+
+  const total_amount = subtotal - Number(discount_amount) + tax_amount
+  const outstanding_amount = total_amount - Number(paid_amount)
+
+  // 3. Add new items and update stock
+  for (const item of processedItems) {
+    await addDoc(collection(firestore, 'purchaseItems'), { purchase_id: id, ...item, created_at: now() })
+    if (item.product_id) {
+      await runTransaction(firestore, async (tx) => { await updateProductStockInTx(tx, item.product_id, item.quantity) })
+    }
+  }
+
+  // 4. Update purchase header
+  await updateDoc(doc(firestore, 'purchases', id), {
+    vendor_id: vendor_id || null, vendor_name: vendor_name || '',
+    vendor_invoice_number: vendor_invoice_number || null,
+    purchase_date: purchase_date || today(),
+    subtotal, discount_amount: Number(discount_amount), tax_amount, total_amount,
+    paid_amount: Number(paid_amount), outstanding_amount: Math.max(0, outstanding_amount),
+    payment_mode: payment_mode || null, notes: notes || null,
+    status: outstanding_amount <= 0 ? 'paid' : Number(paid_amount) > 0 ? 'partial' : 'pending',
+    updated_at: now(), updated_by: userId || null
+  })
+  return { id, total_amount }
+}
+
 // ─── STAFF ───────────────────────────────────────────────────────────────────
 
 export async function getEmployees({ status = 'active', search = '' } = {}) {
