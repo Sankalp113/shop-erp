@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { getCategoriesTree, getBrands, getSizes, getColors, getProduct, createProduct, updateProduct } from '../../services/db'
 import { useRefresh } from '../../context/RefreshContext'
 
+const UNITS = ['Piece', 'Meter', 'Pair', 'Set', 'Kg', 'Box', 'Dozen', 'Roll', 'Yard', 'Other']
 
 export default function ProductForm() {
   const { id } = useParams()
@@ -11,28 +12,36 @@ export default function ProductForm() {
   const isEdit = Boolean(id)
   const { refresh } = useRefresh()
   const [catTree, setCatTree] = useState({ parents: [], children: {} })
-
   const [brands, setBrands] = useState([])
   const [sizes, setSizes] = useState([])
   const [colors, setColors] = useState([])
   const [loading, setLoading] = useState(false)
+  const [checkingCode, setCheckingCode] = useState(false)
   const [form, setForm] = useState({
-    name: '', sku: '', category_id: '', brand_id: '', description: '',
-    purchase_price: '', selling_price: '', mrp: '', discount_percent: 0,
-    tax_percent: 0, min_stock_level: 5, location: '', has_variants: false, opening_stock: 0
+    name: '', product_code: '', sku: '', category_id: '', brand_id: '', description: '',
+    purchase_price: '', selling_price: '', mrp: '',
+    tax_percent: 0, min_stock_level: 5, location: '', has_variants: false,
+    opening_stock: 0, unit: 'Piece'
   })
   const [variants, setVariants] = useState([])
 
   useEffect(() => {
     getCategoriesTree().then(setCatTree)
-
     getBrands().then(setBrands)
     getSizes().then(setSizes)
     getColors().then(setColors)
     if (isEdit) {
       getProduct(id).then(p => {
         if (!p) return
-        setForm({ name: p.name, sku: p.sku || '', category_id: p.category_id || '', brand_id: p.brand_id || '', description: p.description || '', purchase_price: p.purchase_price, selling_price: p.selling_price, mrp: p.mrp || '', discount_percent: p.discount_percent || 0, tax_percent: p.tax_percent || 0, min_stock_level: p.min_stock_level || 5, location: p.location || '', has_variants: p.has_variants === 1, opening_stock: 0 })
+        setForm({
+          name: p.name, product_code: p.product_code || '', sku: p.sku || '',
+          category_id: p.category_id || '', brand_id: p.brand_id || '',
+          description: p.description || '', purchase_price: p.purchase_price,
+          selling_price: p.selling_price, mrp: p.mrp || '',
+          tax_percent: p.tax_percent || 0, min_stock_level: p.min_stock_level || 5,
+          location: p.location || '', has_variants: p.has_variants === 1 || p.has_variants === true,
+          opening_stock: 0, unit: p.unit || 'Piece'
+        })
         if (p.variants?.length) setVariants(p.variants)
       })
     }
@@ -55,15 +64,19 @@ export default function ProductForm() {
       const payload = { ...form, variants: form.has_variants ? variants : [] }
       if (isEdit) {
         await updateProduct(id, payload)
-        toast.success('Product updated')
+        toast.success('Product updated successfully')
       } else {
-        await createProduct(payload)
-        toast.success('Product created')
+        const res = await createProduct(payload)
+        toast.success(`✅ Product created — Code: ${res.product_code}`)
       }
       refresh('products', 'stock')
       navigate('/products')
     } catch (err) { toast.error(err.message || 'Failed') } finally { setLoading(false) }
   }
+
+  const margin = form.purchase_price > 0 && form.selling_price > 0
+    ? ((form.selling_price - form.purchase_price) / form.selling_price * 100).toFixed(1)
+    : 0
 
   return (
     <div>
@@ -82,8 +95,33 @@ export default function ProductForm() {
               <div className="form-row">
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
                   <label className="form-label">Product Name *</label>
-                  <input className="form-control" value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Men's Formal Shirt" required />
+                  <input className="form-control" value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Men's Cotton Shirt" required />
                 </div>
+
+                {/* Product Code — Editable */}
+                <div className="form-group">
+                  <label className="form-label">
+                    Product Code *
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>
+                      (Must be unique — leave blank for auto-generate)
+                    </span>
+                  </label>
+                  <input className="form-control"
+                    value={form.product_code}
+                    onChange={e => set('product_code', e.target.value.toUpperCase())}
+                    placeholder="e.g. JKB-SH-001 or leave blank"
+                    style={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 1 }}
+                  />
+                </div>
+
+                {/* Unit */}
+                <div className="form-group">
+                  <label className="form-label">Unit *</label>
+                  <select className="form-control" value={form.unit} onChange={e => set('unit', e.target.value)}>
+                    {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+
                 <div className="form-group">
                   <label className="form-label">Category</label>
                   <select className="form-control" value={form.category_id} onChange={e => set('category_id', e.target.value)}>
@@ -99,10 +137,6 @@ export default function ProductForm() {
                         <option key={parent.id} value={parent.id}>📁 {parent.name}</option>
                       )
                     })}
-                    {/* Sub-categories without a recognised parent */}
-                    {catTree.all?.filter(c => c.parent_id && !catTree.parents.find(p => p.id === c.parent_id)).map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
                   </select>
                 </div>
 
@@ -114,8 +148,8 @@ export default function ProductForm() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">SKU</label>
-                  <input className="form-control" value={form.sku} onChange={e => set('sku', e.target.value)} placeholder="SKU code" />
+                  <label className="form-label">SKU / Barcode</label>
+                  <input className="form-control" value={form.sku} onChange={e => set('sku', e.target.value)} placeholder="SKU or barcode" />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Rack / Location</label>
@@ -123,7 +157,7 @@ export default function ProductForm() {
                 </div>
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
                   <label className="form-label">Description</label>
-                  <textarea className="form-control" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Product details..." rows={3} />
+                  <textarea className="form-control" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Product details..." rows={2} />
                 </div>
               </div>
             </div>
@@ -135,31 +169,25 @@ export default function ProductForm() {
               <div className="card-header"><span className="card-title">Pricing</span></div>
               <div className="card-body">
                 <div className="form-group">
-                  <label className="form-label">Purchase Price *</label>
+                  <label className="form-label">Purchase Price (₹)</label>
                   <input type="number" className="form-control" value={form.purchase_price} onChange={e => set('purchase_price', e.target.value)} placeholder="0.00" min="0" step="0.01" />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Selling Price *</label>
-                  <input type="number" className="form-control" value={form.selling_price} onChange={e => set('selling_price', e.target.value)} placeholder="0.00" min="0" step="0.01" />
+                  <label className="form-label">Selling Price (₹) *</label>
+                  <input type="number" className="form-control" value={form.selling_price} onChange={e => set('selling_price', e.target.value)} placeholder="0.00" min="0" step="0.01" required />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">MRP</label>
+                  <label className="form-label">MRP (₹)</label>
                   <input type="number" className="form-control" value={form.mrp} onChange={e => set('mrp', e.target.value)} placeholder="0.00" min="0" step="0.01" />
                 </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label">Discount %</label>
-                    <input type="number" className="form-control" value={form.discount_percent} onChange={e => set('discount_percent', e.target.value)} min="0" max="100" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Tax %</label>
-                    <input type="number" className="form-control" value={form.tax_percent} onChange={e => set('tax_percent', e.target.value)} min="0" max="100" />
-                  </div>
+                <div className="form-group">
+                  <label className="form-label">GST / Tax %</label>
+                  <input type="number" className="form-control" value={form.tax_percent} onChange={e => set('tax_percent', e.target.value)} min="0" max="100" step="0.01" placeholder="0" />
                 </div>
                 {form.purchase_price > 0 && form.selling_price > 0 && (
                   <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, padding: '10px 12px', fontSize: 12 }}>
                     <div style={{ color: 'var(--success)', fontWeight: 700 }}>
-                      Margin: ₹{(form.selling_price - form.purchase_price).toFixed(2)} ({((form.selling_price - form.purchase_price) / form.selling_price * 100).toFixed(1)}%)
+                      Margin: ₹{(form.selling_price - form.purchase_price).toFixed(2)} ({margin}%)
                     </div>
                   </div>
                 )}
@@ -169,13 +197,13 @@ export default function ProductForm() {
               <div className="card-header"><span className="card-title">Stock</span></div>
               <div className="card-body">
                 <div className="form-group">
-                  <label className="form-label">Min Stock Level</label>
+                  <label className="form-label">Min Stock Level (Alert)</label>
                   <input type="number" className="form-control" value={form.min_stock_level} onChange={e => set('min_stock_level', e.target.value)} min="0" />
                 </div>
                 {!isEdit && !form.has_variants && (
                   <div className="form-group">
-                    <label className="form-label">Opening Stock</label>
-                    <input type="number" className="form-control" value={form.opening_stock} onChange={e => set('opening_stock', e.target.value)} min="0" />
+                    <label className="form-label">Opening Stock ({form.unit})</label>
+                    <input type="number" className="form-control" value={form.opening_stock} onChange={e => set('opening_stock', e.target.value)} min="0" step="0.01" />
                   </div>
                 )}
                 <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

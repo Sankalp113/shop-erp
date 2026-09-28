@@ -106,27 +106,36 @@ export default function StockOverview() {
               ? <div className="empty-state"><div className="empty-state-icon">📦</div><h3>No stock records</h3></div>
               : <div className="table-container"><table className="table">
                 <thead><tr>
-                  <th>Code</th><th>Product</th><th>Category</th>
-                  <th style={{ textAlign: 'right' }}>Min Level</th>
-                  <th style={{ textAlign: 'right' }}>Current Stock</th>
+                  <th>Code</th><th>Product</th><th>Unit</th><th>Category</th>
+                  <th style={{ textAlign: 'right' }}>Opening</th>
+                  <th style={{ textAlign: 'right', color: 'var(--success)' }}>Purchased</th>
+                  <th style={{ textAlign: 'right', color: 'var(--danger)' }}>Sold</th>
+                  <th style={{ textAlign: 'right', color: 'var(--info)' }}>Returned</th>
+                  <th style={{ textAlign: 'right', color: 'var(--warning)' }}>Damaged</th>
+                  <th style={{ textAlign: 'right' }}>Adjusted</th>
+                  <th style={{ textAlign: 'right', minWidth: 90 }}>Current Stock</th>
                   <th style={{ textAlign: 'right' }}>Purchase ₹</th>
-                  <th style={{ textAlign: 'right' }}>Sell ₹</th>
                   <th style={{ textAlign: 'right' }}>Stock Value</th>
                   <th>Status</th>
                   <th></th>
                 </tr></thead>
                 <tbody>{stock.map(p => (
                   <tr key={p.id}>
-                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{p.product_code}</td>
+                    <td style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace', fontWeight: 600 }}>{p.product_code}</td>
                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</td>
-                    <td style={{ fontSize: 12 }}>{p.category_name || '—'}</td>
-                    <td style={{ textAlign: 'right', fontSize: 12 }}>{p.min_stock_level || 5}</td>
+                    <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.unit || 'Pc'}</td>
+                    <td style={{ fontSize: 11 }}>{p.category_name || '—'}</td>
+                    <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>{p.opening_stock || 0}</td>
+                    <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>+{p.purchased_qty || 0}</td>
+                    <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--danger)', fontWeight: 600 }}>-{p.sold_qty || 0}</td>
+                    <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--info)' }}>+{p.returned_qty || 0}</td>
+                    <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--warning)' }}>-{p.damaged_qty || 0}</td>
+                    <td style={{ textAlign: 'right', fontSize: 12 }}>{p.adjusted_qty > 0 ? `+${p.adjusted_qty}` : (p.adjusted_qty || 0)}</td>
                     <td style={{ textAlign: 'right', fontWeight: 800, fontSize: 16,
                       color: (p.total_stock || 0) <= 0 ? 'var(--danger)' : (p.total_stock || 0) <= (p.min_stock_level || 5) ? 'var(--warning)' : 'var(--success)' }}>
                       {p.total_stock || 0}
                     </td>
                     <td style={{ textAlign: 'right', fontSize: 12 }}>₹{(p.purchase_price || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ textAlign: 'right', fontSize: 12 }}>₹{(p.selling_price || 0).toLocaleString('en-IN')}</td>
                     <td style={{ textAlign: 'right', fontSize: 12 }}>₹{((p.total_stock || 0) * (p.purchase_price || 0)).toLocaleString('en-IN')}</td>
                     <td>
                       {(p.total_stock || 0) <= 0
@@ -136,11 +145,7 @@ export default function StockOverview() {
                           : <span className="badge badge-success">In Stock</span>}
                     </td>
                     <td>
-                      <button
-                        className="btn btn-sm btn-secondary"
-                        onClick={() => openHistory(p)}
-                        title="View stock movement history"
-                      >📋 History</button>
+                      <button className="btn btn-sm btn-secondary" onClick={() => openHistory(p)} title="View stock movement history">📋 History</button>
                     </td>
                   </tr>
                 ))}</tbody>

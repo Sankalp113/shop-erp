@@ -82,7 +82,9 @@ export async function initializeShop() {
 
   // Counters
   batch.set(doc(firestore, 'meta', 'counters'), {
-    invoice: 0, purchase: 0, customer: 0, vendor: 0,
+    invoice: 0, invoice_vr: 0, invoice_janta: 0,
+    invoice_vr_date: '', invoice_janta_date: '',
+    purchase: 0, customer: 0, vendor: 0,
     product: 0, employee: 0, return_sale: 0, created_at: now()
   })
 
@@ -131,11 +133,30 @@ async function getNextCounter(field) {
   return next
 }
 
-async function getNextInvoiceNumber() {
-  const settings = await getSettings()
-  const prefix = settings.invoice_prefix || 'INV'
-  const n = await getNextCounter('invoice')
-  return `${prefix}-${String(n).padStart(5, '0')}`
+async function getNextInvoiceNumber(account) {
+  // Format: VR_DDMMYYYY_NNN or JKB_DDMMYYYY_NNN
+  const d = new Date()
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  const dateStr = `${dd}${mm}${yyyy}`
+
+  const prefix = account === 'VR' ? 'VR' : 'JKB'
+  const counterKey = account === 'VR' ? 'invoice_vr' : 'invoice_janta'
+  const dateKey = account === 'VR' ? 'invoice_vr_date' : 'invoice_janta_date'
+
+  const ref = doc(firestore, 'meta', 'counters')
+  let invoiceNum
+  await runTransaction(firestore, async (tx) => {
+    const snap = await tx.get(ref)
+    const data = snap.data() || {}
+    const storedDate = data[dateKey] || ''
+    const currentCount = storedDate === dateStr ? (data[counterKey] || 0) : 0
+    const next = currentCount + 1
+    invoiceNum = `${prefix}_${dateStr}_${String(next).padStart(3, '0')}`
+    tx.update(ref, { [counterKey]: next, [dateKey]: dateStr })
+  })
+  return invoiceNum
 }
 
 async function getNextPurchaseNumber() {
@@ -144,6 +165,7 @@ async function getNextPurchaseNumber() {
   const n = await getNextCounter('purchase')
   return `${prefix}-${String(n).padStart(5, '0')}`
 }
+
 
 // ─── SETTINGS ────────────────────────────────────────────────────────────────
 
@@ -157,6 +179,12 @@ export async function updateSettings(data) {
 }
 
 // ─── PRODUCTS ────────────────────────────────────────────────────────────────
+
+export async function checkProductCodeUnique(code, excludeId) {
+  const snap = await getDocs(query(collection(firestore, 'products'), where('product_code', '==', code)))
+  const docs = snap.docs.filter(d => d.id !== excludeId)
+  return docs.length === 0 // true = unique
+}
 
 export async function getProducts({ search = '', category_id = '', category_ids = null, is_active = true, limit: lim = 100 } = {}) {
   let q = query(collection(firestore, 'products'), where('is_active', '==', is_active !== false && is_active !== '0'))
@@ -179,18 +207,51 @@ export async function getProduct(id) {
 }
 
 export async function createProduct(data) {
-  const n = await getNextCounter('product')
-  const product_code = `PRD${String(n).padStart(5, '0')}`
-  const ref = await addDoc(collection(firestore, 'products'), {
-    product_code, ...data,
-    is_active: true, total_stock: data.opening_stock || 0,
+  // Validate unique product code if provided
+  let product_code = data.product_code
+  if (product_code) {
+    // Check uniqueness
+    const existing = await getDocs(query(collection(firestore, 'products'), where('product_code', '==', product_code)))
+    if (!existing.empty) throw new Error(`Product code "${product_code}" already exists`)
+  } else {
+    const n = await getNextCounter('product')
+    product_code = `PRD${String(n).padStart(5, '0')}`
+  }
+
+  const opening_stock = Number(data.opening_stock || 0)
+  const productData = {
+    product_code,
+    name: data.name,
+    sku: data.sku || null,
+    category_id: data.category_id || null,
+    brand_id: data.brand_id || null,
+    fabric_id: data.fabric_id || null,
+    description: data.description || null,
+    purchase_price: Number(data.purchase_price || 0),
+    selling_price: Number(data.selling_price || 0),
+    mrp: Number(data.mrp || 0),
+    tax_percent: Number(data.tax_percent || 0),
+    unit: data.unit || 'Piece',
+    min_stock_level: Number(data.min_stock_level || 5),
+    location: data.location || null,
+    has_variants: data.has_variants || false,
+    total_stock: opening_stock,
+    // Stock breakdown fields for tracking
+    opening_stock: opening_stock,
+    purchased_qty: 0,
+    sold_qty: 0,
+    returned_qty: 0,
+    damaged_qty: 0,
+    adjusted_qty: 0,
+    is_active: true,
     created_at: now(), updated_at: now()
-  })
-  if (data.opening_stock > 0) {
+  }
+  const ref = await addDoc(collection(firestore, 'products'), productData)
+  if (opening_stock > 0) {
     await addDoc(collection(firestore, 'stockTransactions'), {
-      product_id: ref.id, product_name: data.name,
-      transaction_type: 'opening', quantity_change: data.opening_stock,
-      quantity_before: 0, quantity_after: data.opening_stock,
+      product_id: ref.id, product_name: data.name, product_code,
+      transaction_type: 'opening', quantity_change: opening_stock,
+      quantity_before: 0, quantity_after: opening_stock,
       notes: 'Opening stock', created_at: now()
     })
   }
@@ -198,7 +259,16 @@ export async function createProduct(data) {
 }
 
 export async function updateProduct(id, data) {
-  await updateDoc(doc(firestore, 'products', id), { ...data, updated_at: now() })
+  // Validate product code uniqueness if changing code
+  if (data.product_code) {
+    const existing = await getDocs(query(collection(firestore, 'products'), where('product_code', '==', data.product_code)))
+    const conflict = existing.docs.find(d => d.id !== id)
+    if (conflict) throw new Error(`Product code "${data.product_code}" is already used by another product`)
+  }
+  const updateData = { ...data, updated_at: now() }
+  // Remove discount_percent from product master (Point 14)
+  delete updateData.discount_percent
+  await updateDoc(doc(firestore, 'products', id), updateData)
 }
 
 export async function deleteProduct(id) {
@@ -509,7 +579,7 @@ export async function recordVendorPayment(vendorId, { amount, payment_mode, paym
 
 // ─── SALES ───────────────────────────────────────────────────────────────────
 
-export async function getSales({ from, to, customer_id, payment_mode, status, search, limit: lim = 50 } = {}) {
+export async function getSales({ from, to, customer_id, payment_mode, status, search, account, limit: lim = 50 } = {}) {
   let snap = await getDocs(query(collection(firestore, 'sales'), orderBy('created_at', 'desc'), limit(500)))
   let data = toDocs(snap).filter(s => s.status !== 'deleted')
   if (from) data = data.filter(s => (s.sale_date || s.created_at) >= from)
@@ -517,6 +587,7 @@ export async function getSales({ from, to, customer_id, payment_mode, status, se
   if (customer_id) data = data.filter(s => s.customer_id === customer_id)
   if (payment_mode) data = data.filter(s => s.payment_mode === payment_mode)
   if (status) data = data.filter(s => s.status === status)
+  if (account && account !== 'Combined') data = data.filter(s => !s.account || s.account === account)
   if (search) { const sr = search.toLowerCase(); data = data.filter(s => s.invoice_number?.toLowerCase().includes(sr) || s.customer_name?.toLowerCase().includes(sr)) }
   const totals = { total_sales: data.reduce((s,x)=>s+(x.total_amount||0),0), cash: data.reduce((s,x)=>s+(x.cash_amount||0),0), upi: data.reduce((s,x)=>s+(x.upi_amount||0),0), card: data.reduce((s,x)=>s+(x.card_amount||0),0), credit: data.reduce((s,x)=>s+(x.credit_amount||0),0) }
   return { data: data.slice(0, lim), total: data.length, totals }
@@ -531,23 +602,24 @@ export async function getSale(id) {
   return saleData
 }
 
-export async function createSale({ customer_id, customer_name, customer_mobile, items, discount_amount = 0, cash_amount = 0, upi_amount = 0, card_amount = 0, credit_amount = 0, payment_mode = 'cash', notes, sale_date }, userId, username) {
+export async function createSale({ customer_id, customer_name, customer_mobile, items, discount_amount = 0, cash_amount = 0, upi_amount = 0, card_amount = 0, credit_amount = 0, payment_mode = 'cash', notes, sale_date, account = 'Janta' }, userId, username) {
   if (!items || items.length === 0) throw new Error('No items in sale')
 
-  const invoice_number = await getNextInvoiceNumber()
+  const invoice_number = await getNextInvoiceNumber(account)
   const saleDate = sale_date || today()
 
   let subtotal = 0, item_discount_total = 0, tax_amount = 0
   const processedItems = items.map(item => {
-    const gross = item.unit_price * item.quantity
-    const itemDisc = gross * (item.discount_percent || 0) / 100
-    const itemNet = gross - itemDisc
-    const itemTax = itemNet * (item.tax_percent || 0) / 100
+    const gross = Number(item.unit_price) * Number(item.quantity)
+    const itemDiscPct = Number(item.discount_percent || 0)
+    const itemDiscAmt = Number(item.discount_amount || 0) || (gross * itemDiscPct / 100)
+    const itemNet = gross - itemDiscAmt
+    const itemTax = itemNet * Number(item.tax_percent || 0) / 100
     const itemTotal = itemNet + itemTax
     subtotal += gross
-    item_discount_total += itemDisc
+    item_discount_total += itemDiscAmt
     tax_amount += itemTax
-    return { ...item, discount_amount: itemDisc, tax_amount: itemTax, total_price: itemTotal }
+    return { ...item, discount_amount: itemDiscAmt, tax_amount: itemTax, total_price: itemTotal }
   })
 
   const total_amount = subtotal - item_discount_total - Number(discount_amount) + tax_amount
@@ -558,8 +630,8 @@ export async function createSale({ customer_id, customer_name, customer_mobile, 
     invoice_number, sale_date: saleDate,
     customer_id: customer_id || null, customer_name: customer_name || 'Walk-in Customer',
     customer_mobile: customer_mobile || null,
+    account: account || 'Janta',
     subtotal, item_discount_amount: item_discount_total, discount_amount: Number(discount_amount), tax_amount, total_amount,
-
     paid_amount, credit_amount: Number(credit_amount),
     payment_mode, cash_amount: Number(cash_amount), upi_amount: Number(upi_amount),
     card_amount: Number(card_amount), notes: notes || null,
@@ -569,13 +641,18 @@ export async function createSale({ customer_id, customer_name, customer_mobile, 
   // Create sale items & deduct stock
   for (const item of processedItems) {
     await addDoc(collection(firestore, 'saleItems'), {
-      sale_id: saleRef.id, sale_date: saleDate, ...item, created_at: now()
+      sale_id: saleRef.id, sale_date: saleDate, account: account || 'Janta', ...item, created_at: now()
     })
     // Deduct stock
     await runTransaction(firestore, async (tx) => {
-      await updateProductStockInTx(tx, item.product_id, -item.quantity)
+      const pRef = doc(firestore, 'products', item.product_id)
+      const pSnap = await tx.get(pRef)
+      const current = pSnap.data()?.total_stock || 0
+      const newQty = Math.max(0, current - Number(item.quantity))
+      const soldQty = (pSnap.data()?.sold_qty || 0) + Number(item.quantity)
+      tx.update(pRef, { total_stock: newQty, sold_qty: soldQty, updated_at: now() })
     })
-    await logStockTx(item.product_id, item.product_name, 'sale', 'sale', saleRef.id, -item.quantity, 0, 0, `Sale ${invoice_number}`, userId)
+    await logStockTx(item.product_id, item.product_name, 'sale', 'sale', saleRef.id, -Number(item.quantity), 0, 0, `Sale ${invoice_number}`, userId)
   }
 
   // Customer ledger for credit
@@ -583,14 +660,17 @@ export async function createSale({ customer_id, customer_name, customer_mobile, 
     const ledgerSnap = await getDocs(query(collection(firestore, 'customerLedger'), where('customer_id', '==', customer_id), orderBy('created_at', 'desc'), limit(1)))
     const lastBal = ledgerSnap.docs[0]?.data()?.balance || 0
     await addDoc(collection(firestore, 'customerLedger'), {
-      customer_id, customer_name: customer_name || '', transaction_type: 'sale',
+      customer_id, customer_name: customer_name || '', transaction_type: 'sale', account: account || 'Janta',
       debit: Number(credit_amount), credit: 0, balance: lastBal + Number(credit_amount),
       notes: `Credit sale - ${invoice_number}`, transaction_date: saleDate, created_at: now(), created_by: userId || null
     })
   }
 
   // Cash transaction
-  if (Number(cash_amount) > 0) await addCashInflow(Number(cash_amount), `Sale ${invoice_number}`, 'sale', saleRef.id, saleDate, userId)
+  if (Number(cash_amount) > 0) await addCashInflow(Number(cash_amount), `Sale ${invoice_number}`, 'sale', saleRef.id, saleDate, userId, account)
+
+  // UPI transaction (separate from cash)
+  if (Number(upi_amount) > 0) await addUpiInflow(Number(upi_amount), `Sale ${invoice_number}`, 'sale', saleRef.id, saleDate, userId, account)
 
   return { id: saleRef.id, invoice_number, total_amount }
 }
@@ -636,13 +716,14 @@ export async function createSaleReturn({ original_sale_id, return_reason, refund
 
 // ─── PURCHASES ───────────────────────────────────────────────────────────────
 
-export async function getPurchases({ from, to, vendor_id, status, limit: lim = 50 } = {}) {
+export async function getPurchases({ from, to, vendor_id, status, account, limit: lim = 50 } = {}) {
   let snap = await getDocs(query(collection(firestore, 'purchases'), orderBy('created_at', 'desc'), limit(300)))
   let data = toDocs(snap)
   if (from) data = data.filter(p => (p.purchase_date || p.created_at) >= from)
   if (to) data = data.filter(p => (p.purchase_date || p.created_at) <= to + 'T23:59:59')
   if (vendor_id) data = data.filter(p => p.vendor_id === vendor_id)
   if (status) data = data.filter(p => p.status === status)
+  if (account && account !== 'Combined') data = data.filter(p => !p.account || p.account === account)
   return { data: data.slice(0, lim), total: data.length }
 }
 
@@ -657,45 +738,80 @@ export async function getPurchase(id) {
   return purchase
 }
 
-export async function createPurchase({ vendor_id, vendor_name, vendor_invoice_number, purchase_date, items, discount_amount = 0, paid_amount = 0, payment_mode, due_date, notes }, userId) {
+export async function createPurchase({ vendor_id, vendor_name, vendor_invoice_number, purchase_date, items, discount_amount = 0, paid_amount = 0, payment_mode, due_date, notes, transportation_charges = 0, other_charges = 0, gst_percent = 0, account }, userId) {
   if (!items || items.length === 0) throw new Error('No items in purchase')
   const purchase_number = await getNextPurchaseNumber()
   const pDate = purchase_date || today()
 
   let subtotal = 0, item_discount_total = 0, tax_amount = 0
   const processedItems = items.map(item => {
-    const gross = item.unit_price * item.quantity
-    const itemDisc = gross * (item.discount_percent || 0) / 100
-    const itemNet = gross - itemDisc
-    const itemTax = itemNet * (item.tax_percent || 0) / 100
-    subtotal += gross
+    const gross = Number(item.unit_price) * Number(item.quantity)
+    const basic_amount = gross // qty × rate
+    const itemDisc = basic_amount * (Number(item.discount_percent || 0) / 100)
+    const itemNet = basic_amount - itemDisc
+    const itemGst = itemNet * (Number(item.gst_percent || item.tax_percent || 0) / 100)
+    subtotal += basic_amount
     item_discount_total += itemDisc
-    tax_amount += itemTax
-    return { ...item, discount_amount: itemDisc, tax_amount: itemTax, total_price: itemNet + itemTax }
+    tax_amount += itemGst
+    return {
+      ...item,
+      basic_amount,
+      discount_amount: itemDisc,
+      gst_percent: Number(item.gst_percent || item.tax_percent || 0),
+      gst_amount: itemGst,
+      tax_percent: Number(item.gst_percent || item.tax_percent || 0),
+      tax_amount: itemGst,
+      total_price: itemNet + itemGst
+    }
   })
 
-  const total_amount = subtotal - item_discount_total - Number(discount_amount) + tax_amount
+  // Total = Basic + GST + Transportation + Other
+  const total_amount = subtotal - item_discount_total - Number(discount_amount) + tax_amount + Number(transportation_charges) + Number(other_charges)
   const outstanding_amount = total_amount - Number(paid_amount)
 
   const purchaseRef = await addDoc(collection(firestore, 'purchases'), {
-    purchase_number, vendor_invoice_number: vendor_invoice_number || null,
-    purchase_date: pDate, vendor_id: vendor_id || null, vendor_name: vendor_name || '',
-    subtotal, item_discount_amount: item_discount_total, discount_amount: Number(discount_amount), tax_amount, total_amount,
-
-    paid_amount: Number(paid_amount), outstanding_amount,
-    payment_mode: payment_mode || null, due_date: due_date || null, notes: notes || null,
-    status: outstanding_amount <= 0 ? 'paid' : paid_amount > 0 ? 'partial' : 'pending',
-    created_by: userId || null, created_at: now()
+    purchase_number,
+    vendor_invoice_number: vendor_invoice_number || null,
+    purchase_date: pDate,
+    vendor_id: vendor_id || null,
+    vendor_name: vendor_name || '',
+    account: account || null,
+    subtotal,
+    item_discount_amount: item_discount_total,
+    discount_amount: Number(discount_amount),
+    tax_amount,
+    gst_percent: Number(gst_percent),
+    transportation_charges: Number(transportation_charges),
+    other_charges: Number(other_charges),
+    total_amount,
+    paid_amount: Number(paid_amount),
+    outstanding_amount,
+    payment_mode: payment_mode || null,
+    due_date: due_date || null,
+    notes: notes || null,
+    status: outstanding_amount <= 0 ? 'paid' : Number(paid_amount) > 0 ? 'partial' : 'pending',
+    created_by: userId || null,
+    created_at: now()
   })
 
   for (const item of processedItems) {
     await addDoc(collection(firestore, 'purchaseItems'), { purchase_id: purchaseRef.id, ...item, created_at: now() })
-    await runTransaction(firestore, async (tx) => { await updateProductStockInTx(tx, item.product_id, item.quantity) })
-    await logStockTx(item.product_id, item.product_name, 'purchase', 'purchase', purchaseRef.id, item.quantity, 0, 0, `Purchase ${purchase_number}`, userId)
+    await runTransaction(firestore, async (tx) => {
+      const pRef = doc(firestore, 'products', item.product_id)
+      const pSnap = await tx.get(pRef)
+      const current = pSnap.data()?.total_stock || 0
+      const newQty = current + Number(item.quantity)
+      const purchasedQty = (pSnap.data()?.purchased_qty || 0) + Number(item.quantity)
+      tx.update(pRef, { total_stock: newQty, purchased_qty: purchasedQty, updated_at: now() })
+    })
+    await logStockTx(item.product_id, item.product_name, 'purchase', 'purchase', purchaseRef.id, Number(item.quantity), 0, 0, `Purchase ${purchase_number}`, userId)
   }
 
   if (Number(paid_amount) > 0 && payment_mode === 'cash') {
-    await addCashOutflow(Number(paid_amount), `Purchase ${purchase_number}`, 'purchase', purchaseRef.id, pDate, userId)
+    await addCashOutflow(Number(paid_amount), `Purchase ${purchase_number}`, 'purchase', purchaseRef.id, pDate, userId, account)
+  }
+  if (Number(paid_amount) > 0 && payment_mode === 'upi') {
+    await addUpiOutflow(Number(paid_amount), `Purchase ${purchase_number}`, 'purchase', purchaseRef.id, pDate, userId, account)
   }
 
   // Vendor ledger
@@ -705,7 +821,22 @@ export async function createPurchase({ vendor_id, vendor_name, vendor_invoice_nu
     await addDoc(collection(firestore, 'vendorLedger'), {
       vendor_id, vendor_name: vendor_name || '', transaction_type: 'purchase',
       debit: 0, credit: outstanding_amount, balance: lastBal + outstanding_amount,
+      account: account || null,
       notes: `Purchase - ${purchase_number}`, transaction_date: pDate, created_at: now(), created_by: userId || null
+    })
+  }
+
+  // Auto-create payment reminder for outstanding
+  if (outstanding_amount > 0 && due_date) {
+    await addDoc(collection(firestore, 'reminders'), {
+      reminder_type: 'vendor_payment',
+      reference_type: 'purchase', reference_id: purchaseRef.id,
+      title: `Vendor Payment Due - ${purchase_number}`,
+      description: `Pay ₹${outstanding_amount.toFixed(2)} to ${vendor_name || 'Vendor'} for ${vendor_invoice_number || purchase_number}`,
+      amount: outstanding_amount,
+      due_date,
+      status: 'pending', priority: outstanding_amount > 50000 ? 'high' : 'normal',
+      created_at: now()
     })
   }
 
@@ -854,9 +985,23 @@ export async function getExpenses({ from, to, category_id } = {}) {
   return { data, total: data.length, totals }
 }
 
-export async function createExpense({ expense_date, category_id, category_name, description, amount, payment_mode, vendor_person, notes }, userId) {
-  const ref = await addDoc(collection(firestore, 'expenses'), { expense_date: expense_date || today(), category_id: category_id || null, category_name: category_name || '', description, amount: Number(amount), payment_mode, vendor_person: vendor_person || null, notes: notes || null, created_by: userId || null, created_at: now() })
-  if (payment_mode === 'cash') await addCashOutflow(Number(amount), description, 'expense', ref.id, expense_date || today(), userId)
+export async function createExpense({ expense_date, category_id, category_name, description, amount, payment_mode, vendor_person, notes, account, receipt_bill_no }, userId) {
+  const ref = await addDoc(collection(firestore, 'expenses'), {
+    expense_date: expense_date || today(),
+    category_id: category_id || null,
+    category_name: category_name || '',
+    description,
+    amount: Number(amount),
+    payment_mode,
+    vendor_person: vendor_person || null,
+    notes: notes || null,
+    account: account || null,
+    receipt_bill_no: receipt_bill_no || null,
+    created_by: userId || null,
+    created_at: now()
+  })
+  if (payment_mode === 'cash') await addCashOutflow(Number(amount), description, 'expense', ref.id, expense_date || today(), userId, account)
+  if (payment_mode === 'upi') await addUpiOutflow(Number(amount), description, 'expense', ref.id, expense_date || today(), userId, account)
   return { id: ref.id }
 }
 
@@ -889,7 +1034,13 @@ export async function getRentPayments() {
 }
 
 export async function createRentPayment(data) {
-  const ref = await addDoc(collection(firestore, 'rentPayments'), { ...data, status: 'pending', created_at: now() })
+  const ref = await addDoc(collection(firestore, 'rentPayments'), {
+    ...data,
+    receipt_number: data.receipt_number || null,
+    account: data.account || null,
+    status: 'pending',
+    created_at: now()
+  })
   return { id: ref.id }
 }
 
@@ -917,39 +1068,104 @@ export async function toggleRecurringExpense(id, is_active) {
 
 // ─── FINANCE / CASH ──────────────────────────────────────────────────────────
 
-async function getLastCashBalance() {
-  const snap = await getDocs(query(collection(firestore, 'cashTransactions'), orderBy('created_at', 'desc'), limit(1)))
+async function getLastCashBalance(account) {
+  let q = query(collection(firestore, 'cashTransactions'), orderBy('created_at', 'desc'), limit(1))
+  if (account && account !== 'Combined') {
+    q = query(collection(firestore, 'cashTransactions'), where('account', '==', account), orderBy('created_at', 'desc'), limit(1))
+  }
+  const snap = await getDocs(q)
   return snap.docs[0]?.data()?.balance_after || 0
 }
 
-async function addCashInflow(amount, description, refType, refId, txDate, userId) {
+async function getLastUpiBalance(account) {
+  let q = query(collection(firestore, 'upiTransactions'), orderBy('created_at', 'desc'), limit(1))
+  if (account && account !== 'Combined') {
+    q = query(collection(firestore, 'upiTransactions'), where('account', '==', account), orderBy('created_at', 'desc'), limit(1))
+  }
+  const snap = await getDocs(q)
+  return snap.docs[0]?.data()?.balance_after || 0
+}
+
+async function addCashInflow(amount, description, refType, refId, txDate, userId, account) {
   const lastBal = await getLastCashBalance()
   const newBal = lastBal + amount
-  await addDoc(collection(firestore, 'cashTransactions'), { transaction_date: txDate || today(), transaction_type: refType || 'other', reference_type: refType || null, reference_id: refId || null, description, amount, balance_after: newBal, is_inflow: true, created_by: userId || null, created_at: now() })
+  await addDoc(collection(firestore, 'cashTransactions'), {
+    transaction_date: txDate || today(), transaction_type: refType || 'other',
+    reference_type: refType || null, reference_id: refId || null,
+    description, amount, balance_after: newBal, is_inflow: true,
+    account: account || null, created_by: userId || null, created_at: now()
+  })
 }
 
-async function addCashOutflow(amount, description, refType, refId, txDate, userId) {
+async function addCashOutflow(amount, description, refType, refId, txDate, userId, account) {
   const lastBal = await getLastCashBalance()
   const newBal = Math.max(0, lastBal - amount)
-  await addDoc(collection(firestore, 'cashTransactions'), { transaction_date: txDate || today(), transaction_type: refType || 'other', reference_type: refType || null, reference_id: refId || null, description, amount: -amount, balance_after: newBal, is_inflow: false, created_by: userId || null, created_at: now() })
+  await addDoc(collection(firestore, 'cashTransactions'), {
+    transaction_date: txDate || today(), transaction_type: refType || 'other',
+    reference_type: refType || null, reference_id: refId || null,
+    description, amount: -amount, balance_after: newBal, is_inflow: false,
+    account: account || null, created_by: userId || null, created_at: now()
+  })
 }
 
-export async function getCashBook({ from, to } = {}) {
+async function addUpiInflow(amount, description, refType, refId, txDate, userId, account) {
+  const lastBal = await getLastUpiBalance()
+  const newBal = lastBal + amount
+  await addDoc(collection(firestore, 'upiTransactions'), {
+    transaction_date: txDate || today(), transaction_type: refType || 'other',
+    reference_type: refType || null, reference_id: refId || null,
+    description, amount, balance_after: newBal, is_inflow: true,
+    account: account || null, created_by: userId || null, created_at: now()
+  })
+}
+
+async function addUpiOutflow(amount, description, refType, refId, txDate, userId, account) {
+  const lastBal = await getLastUpiBalance()
+  const newBal = Math.max(0, lastBal - amount)
+  await addDoc(collection(firestore, 'upiTransactions'), {
+    transaction_date: txDate || today(), transaction_type: refType || 'other',
+    reference_type: refType || null, reference_id: refId || null,
+    description, amount: -amount, balance_after: newBal, is_inflow: false,
+    account: account || null, created_by: userId || null, created_at: now()
+  })
+}
+
+export async function getCashBook({ from, to, account } = {}) {
   let snap = await getDocs(query(collection(firestore, 'cashTransactions'), orderBy('created_at', 'desc'), limit(500)))
   let data = toDocs(snap)
   if (from) data = data.filter(t => t.transaction_date >= from)
   if (to) data = data.filter(t => t.transaction_date <= to)
+  if (account && account !== 'Combined') data = data.filter(t => !t.account || t.account === account)
+  const balance = data.length > 0 ? (data[0].balance_after || 0) : 0
+  return { data, total: data.length, current_balance: balance }
+}
+
+export async function getUpiBook({ from, to, account } = {}) {
+  let snap = await getDocs(query(collection(firestore, 'upiTransactions'), orderBy('created_at', 'desc'), limit(500)))
+  let data = toDocs(snap)
+  if (from) data = data.filter(t => t.transaction_date >= from)
+  if (to) data = data.filter(t => t.transaction_date <= to)
+  if (account && account !== 'Combined') data = data.filter(t => !t.account || t.account === account)
   const balance = data.length > 0 ? (data[0].balance_after || 0) : 0
   return { data, total: data.length, current_balance: balance }
 }
 
 export async function addCashTransaction(txData, userId) {
   if (txData.transaction_type === 'deposit' || txData.is_inflow) {
-    await addCashInflow(Number(txData.amount), txData.description, txData.transaction_type, null, txData.transaction_date, userId)
+    await addCashInflow(Number(txData.amount), txData.description, txData.transaction_type, null, txData.transaction_date, userId, txData.account)
   } else {
-    await addCashOutflow(Number(txData.amount), txData.description, txData.transaction_type, null, txData.transaction_date, userId)
+    await addCashOutflow(Number(txData.amount), txData.description, txData.transaction_type, null, txData.transaction_date, userId, txData.account)
   }
 }
+
+export async function addUpiTransaction(txData, userId) {
+  if (txData.is_inflow) {
+    await addUpiInflow(Number(txData.amount), txData.description, txData.transaction_type, null, txData.transaction_date, userId, txData.account)
+  } else {
+    await addUpiOutflow(Number(txData.amount), txData.description, txData.transaction_type, null, txData.transaction_date, userId, txData.account)
+  }
+}
+
 
 export async function getBankAccounts() {
   const snap = await getDocs(query(collection(firestore, 'bankAccounts'), where('is_active', '==', true)))
@@ -1293,7 +1509,8 @@ export async function payRentByMode(id, mode, userId) {
   if (!snap.exists()) throw new Error('Rent record not found')
   const rent = snap.data()
   await updateDoc(doc(firestore, 'rentPayments', id), { status: 'paid', payment_date: today(), payment_mode: mode, updated_at: now() })
-  if (mode === 'cash') await addCashOutflow(rent.amount || 0, 'Shop Rent', 'rent', id, today(), userId)
+  if (mode === 'cash') await addCashOutflow(rent.amount || 0, 'Shop Rent', 'rent', id, today(), userId, rent.account)
+  if (mode === 'upi') await addUpiOutflow(rent.amount || 0, 'Shop Rent', 'rent', id, today(), userId, rent.account)
 }
 
 // Electricity aliases with userId support

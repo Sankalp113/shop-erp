@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useAccount } from '../context/AccountContext'
 import { getReminders } from '../services/db'
 
 const NAV = [
@@ -75,6 +76,7 @@ const NAV = [
 
 export default function Layout() {
   const { user, logout } = useAuth()
+  const { account, setAccount } = useAccount()
   const navigate = useNavigate()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
@@ -206,6 +208,18 @@ export default function Layout() {
             <span className="topbar-title" style={{ marginRight: 'auto', fontSize: 13, color: 'var(--text-muted)' }}>
               {new Date().toLocaleDateString('en-IN', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
             </span>
+
+            {/* Account Selector */}
+            <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elevated)', borderRadius: 8, padding: 4, border: '1px solid var(--border)' }}>
+              {['Combined','VR','Janta'].map(a => (
+                <button key={a} onClick={() => setAccount(a)}
+                  style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+                    background: account === a ? (a === 'VR' ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : a === 'Janta' ? 'linear-gradient(135deg,#10b981,#059669)' : 'linear-gradient(135deg,#f59e0b,#d97706)') : 'transparent',
+                    color: account === a ? 'white' : 'var(--text-muted)' }}>
+                  {a === 'Combined' ? '🔗 All' : a === 'VR' ? '🔵 VR' : '🟢 Janta'}
+                </button>
+              ))}
+            </div>
 
             <button className="topbar-icon-btn" onClick={() => navTo('/sales/new')} title="New Sale" style={{ background: 'linear-gradient(135deg,var(--primary),var(--primary-light))', color: 'white', borderRadius: 8, padding: '0 12px', width: 'auto', fontSize: 12, fontWeight: 600, gap: 6, display: 'flex', alignItems: 'center' }}>
               ➕ New Sale

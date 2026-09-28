@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { RefreshProvider } from './context/RefreshContext'
+import { AccountProvider } from './context/AccountContext'
 import Layout from './components/Layout'
 
 
@@ -99,9 +100,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <RefreshProvider>
-        <AppRoutes />
-      </RefreshProvider>
+      <AccountProvider>
+        <RefreshProvider>
+          <AppRoutes />
+        </RefreshProvider>
+      </AccountProvider>
     </AuthProvider>
   )
 }

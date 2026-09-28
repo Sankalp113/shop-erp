@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { getExpenseCategories, getExpenses, createExpense, deleteExpense, updateExpense } from '../../services/db'
 import { useAuth } from '../../context/AuthContext'
+import { useAccount } from '../../context/AccountContext'
 
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
-const BLANK = { expense_date: new Date().toISOString().split('T')[0], category_id:'', description:'', amount:'', payment_mode:'cash', vendor_person:'', notes:'' }
+const BLANK = { expense_date: new Date().toISOString().split('T')[0], category_id:'', description:'', amount:'', payment_mode:'cash', vendor_person:'', notes:'', account:'', receipt_bill_no:'' }
 
 export default function Expenses() {
   const { user } = useAuth()
+  const { account } = useAccount()
   const [expenses, setExpenses] = useState([])
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
@@ -16,7 +18,7 @@ export default function Expenses() {
   const [total, setTotal] = useState(0)
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
-  const [form, setForm] = useState(BLANK)
+  const [form, setForm] = useState({ ...BLANK, account: account !== 'Combined' ? account : '' })
 
   useEffect(() => { getExpenseCategories().then(setCategories) }, [])
   useEffect(() => { load() }, [period, catId])
@@ -42,7 +44,7 @@ export default function Expenses() {
   function openAdd() { setEditItem(null); setForm(BLANK); setShowForm(true) }
   function openEdit(e) {
     setEditItem(e)
-    setForm({ expense_date: e.expense_date, category_id: e.category_id||'', description: e.description, amount: e.amount, payment_mode: e.payment_mode||'cash', vendor_person: e.vendor_person||'', notes: e.notes||'' })
+    setForm({ expense_date: e.expense_date, category_id: e.category_id||'', description: e.description, amount: e.amount, payment_mode: e.payment_mode||'cash', vendor_person: e.vendor_person||'', notes: e.notes||'', account: e.account||'', receipt_bill_no: e.receipt_bill_no||'' })
     setShowForm(true)
   }
   function closeForm() { setShowForm(false); setEditItem(null); setForm(BLANK) }
@@ -97,13 +99,18 @@ export default function Expenses() {
             : expenses.length === 0
               ? <div className="empty-state"><div className="empty-state-icon">💸</div><h3>No expenses found</h3></div>
               : <div className="table-container"><table className="table">
-                <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Payment</th><th>Vendor / Person</th><th style={{textAlign:'right'}}>Amount</th><th></th></tr></thead>
+                <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Receipt #</th><th>Payment</th><th>Account</th><th>Vendor / Person</th><th style={{textAlign:'right'}}>Amount</th><th></th></tr></thead>
                 <tbody>{expenses.map(e=>(
                   <tr key={e.id}>
                     <td style={{fontSize:12,color:'var(--text-muted)'}}>{e.expense_date}</td>
                     <td style={{fontSize:12}}>{e.category_name||'—'}</td>
                     <td style={{fontWeight:500}}>{e.description}</td>
+                    <td style={{fontSize:11,fontFamily:'monospace',color:'var(--text-muted)'}}>{e.receipt_bill_no||'—'}</td>
                     <td><span className="badge badge-info">{(e.payment_mode||'').toUpperCase()}</span></td>
+                    <td>{e.account && <span style={{fontSize:11,padding:'2px 8px',borderRadius:99,
+                      background: e.account==='VR'?'rgba(99,102,241,0.12)':'rgba(16,185,129,0.12)',
+                      color: e.account==='VR'?'#818cf8':'var(--success)'}}>
+                      {e.account==='VR'?'🔵 VR':'🟢 Janta'}</span>}</td>
                     <td style={{fontSize:12,color:'var(--text-muted)'}}>{e.vendor_person||'—'}</td>
                     <td style={{textAlign:'right',fontWeight:700,color:'var(--danger)'}}>{fmt(e.amount)}</td>
                     <td><div style={{display:'flex',gap:4}}>
@@ -131,10 +138,17 @@ export default function Expenses() {
                       {categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                     </select></div>
                   <div className="form-group" style={{gridColumn:'1/-1'}}><label className="form-label">Description *</label><input className="form-control" value={form.description} onChange={e=>set('description',e.target.value)} required/></div>
-                  <div className="form-group"><label className="form-label">Amount *</label><input type="number" className="form-control" value={form.amount} onChange={e=>set('amount',e.target.value)} step="0.01" required/></div>
+                  <div className="form-group"><label className="form-label">Amount (₹) *</label><input type="number" className="form-control" value={form.amount} onChange={e=>set('amount',e.target.value)} step="0.01" required/></div>
                   <div className="form-group"><label className="form-label">Payment Mode</label>
                     <select className="form-control" value={form.payment_mode} onChange={e=>set('payment_mode',e.target.value)}>
-                      <option value="cash">Cash</option><option value="upi">UPI</option><option value="bank">Bank</option>
+                      <option value="cash">💵 Cash</option><option value="upi">📱 UPI</option><option value="bank">🏧 Bank</option><option value="card">💳 Card</option>
+                    </select></div>
+                  <div className="form-group"><label className="form-label">Receipt / Bill No.</label><input className="form-control" value={form.receipt_bill_no} onChange={e=>set('receipt_bill_no',e.target.value)} placeholder="Receipt number"/></div>
+                  <div className="form-group"><label className="form-label">Account</label>
+                    <select className="form-control" value={form.account} onChange={e=>set('account',e.target.value)}>
+                      <option value="">Select account</option>
+                      <option value="VR">🔵 VR</option>
+                      <option value="Janta">🟢 Janta</option>
                     </select></div>
                   <div className="form-group"><label className="form-label">Paid To (Person/Vendor)</label><input className="form-control" value={form.vendor_person} onChange={e=>set('vendor_person',e.target.value)}/></div>
                   <div className="form-group" style={{gridColumn:'1/-1'}}><label className="form-label">Notes</label><textarea className="form-control" value={form.notes} onChange={e=>set('notes',e.target.value)} rows={2}/></div>
