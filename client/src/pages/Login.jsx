@@ -77,13 +77,13 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} autoComplete="on">
             <div className="form-group">
-              <label className="form-label">USERNAME</label>
+              <label className="form-label">USERNAME / EMAIL</label>
               <input
                 id="username"
                 name="username"
                 className="form-control"
                 type="text"
-                placeholder="e.g. admin"
+                placeholder="e.g. admin or admin@jkb.in"
                 value={form.username}
                 onChange={e => setForm(p => ({ ...p, username: e.target.value }))}
                 autoFocus
@@ -132,11 +132,12 @@ export default function Login() {
           <div style={{ marginTop: 20, padding: 14, background: 'rgba(124,58,237,0.08)', borderRadius: 12, border: '1px solid rgba(124,58,237,0.2)' }}>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Default credentials:</p>
             <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              Username: <strong style={{ color: 'var(--primary-light)' }}>admin</strong>
+              Username: <strong style={{ color: 'var(--primary-light)' }}>admin@jkb.in</strong>
             </p>
             <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
               Password: <strong style={{ color: 'var(--primary-light)' }}>admin123</strong>
             </p>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Or just type <strong>admin</strong> as username</p>
           </div>
         </div>
 
